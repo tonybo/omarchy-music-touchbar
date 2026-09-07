@@ -73,7 +73,7 @@ def unit_text(role):
     if role=='renderer':
         return f'''[Unit]
 Description=Radio Atlas Touch Bar renderer
-After=tiny-dfr.service
+# Publishes files independently; tiny-dfr may start after graphical.target.
 Wants=tiny-dfr.service
 
 [Service]
@@ -144,7 +144,7 @@ def plan(account, width, height, dictation):
     rules='''# Installed by omarchy-touchbar-radio.
 '''
     for name in ('Apple Inc. Touch Bar Display Touchpad','Dynamic Function Row Virtual Input Device'):
-        rules+=f'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{{name}}=="{name}", RUN+="/usr/bin/setfacl -m u:{account.pw_name}:r /dev/%k"\n'
+        rules+=f'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{{name}}=="{name}", RUN+="/usr/bin/setfacl -m u:{account.pw_name}:r /dev/input/%k"\n'
     add('/etc/udev/rules.d/99-omarchy-touchbar-radio.rules',rules)
     player=home/'.config/omarchy/plugins/akshar.radio-atlas/radio-player'
     if not player.is_file(): raise ValueError('Install and enable the Radio Atlas Omarchy plugin first.')
