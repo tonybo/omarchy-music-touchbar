@@ -6,7 +6,7 @@ Turn a MacBook Touch Bar into a live radio control surface for **Omarchy + Radio
 ![Live swipe-volume meter](assets/volume-preview.svg)
 
 - Song and artist first, station underneath, with scrolling for long names.
-- Tap the media panel to open Radio Atlas.
+- Tap the media panel to toggle Radio Atlas open or closed.
 - Swipe left or right to adjust **radio volume**, with 1% increments and an eased level meter while your finger moves.
 - Previous station, play/pause, and next station controls. The button shows pause while playing and play while paused or stopped.
 - Optional microphone button for Voxtype dictation.
@@ -73,7 +73,7 @@ Configure and test Voxtype's microphone and transcription model separately. This
 
 | Touch Bar interaction | Result |
 | --- | --- |
-| Tap the large media panel | Open Radio Atlas |
+| Tap the large media panel | Toggle Radio Atlas open / closed |
 | Swipe right across that panel | Raise Radio Atlas volume |
 | Swipe left across that panel | Lower Radio Atlas volume |
 | Lift your finger | Briefly keep the final percentage, then restore media info |

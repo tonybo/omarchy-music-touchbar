@@ -160,8 +160,8 @@ def main():
                     elif gesture is not None:
                         action=gesture.action(now)
                         if action and action[0]=='tap':
-                            subprocess.Popen(['omarchy-shell','shell','summon','akshar.radio-atlas'],stdout=subprocess.DEVNULL)
-                            logging.warning('Radio panel tap: open')
+                            subprocess.Popen(['omarchy-shell','shell','toggle','akshar.radio-atlas'],stdout=subprocess.DEVNULL)
+                            logging.warning('Radio panel tap: toggle')
                         elif gesture.armed and not gesture.cancelled and gesture.distance>=25:
                             dx=gesture.x-gesture.start
                             target=volume_for_swipe(gesture.base_volume,dx) if abs(dx)>=25 else gesture.base_volume
