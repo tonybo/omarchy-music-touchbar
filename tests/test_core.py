@@ -58,6 +58,35 @@ class TouchTests(unittest.TestCase):
             self.assertEqual(a,0);self.assertLess(b,2008)
 
 class RenderTests(unittest.TestCase):
+    def test_playback_button_and_badge_follow_state(self):
+        live = {'running': True, 'paused': False, 'loaded': True}
+        paused = dict(live, paused=True)
+        loading = dict(live, loaded=False)
+        error = dict(live, error='Disconnected')
+        for state, badge in [(live, 'LIVE'), (paused, 'PAUSED'), (loading, 'LOADING'), (error, 'ERROR'), ({}, 'RADIO')]:
+            self.assertIn('>' + badge + '</text>', r.render(state))
+            ET.fromstring(r.render_playback(state))
+        self.assertNotEqual(r.render_playback(live), r.render_playback(paused))
+        self.assertEqual(r.render_playback(live), r.render_playback(loading))
+        self.assertEqual(r.render_playback(paused), r.render_playback(error))
+        self.assertEqual(r.render_playback(paused), r.render_playback({}))
+
+    def test_playback_updates_even_when_volume_panel_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder)
+            base = out / 'base.toml'
+            base.write_text('MediaLayerKeys=[]')
+            with patch.object(r, 'BASE', base), patch.object(r, 'OUTPUT', out):
+                svg = r.render({})
+                r.publish(svg, playback=r.render_playback({'running': True}))
+                before = (out / 'config.toml').read_text()
+                inode = (out / 'config.toml').stat().st_ino
+                paused = r.render_playback({'running': True, 'paused': True})
+                r.publish(svg, playback=paused)
+                self.assertEqual((out / r.PLAYBACK_ICON).read_text(), paused)
+                self.assertNotEqual((out / 'config.toml').read_text(), before)
+                self.assertEqual((out / 'config.toml').stat().st_ino, inode)
+
     def test_scroll_preserves_full_text_and_escapes_xml(self):
         state={'running':True,'station':{'name':'Station <&>'},'title':'日本語 <&> '*50}
         first=r.render(state,0);later=r.render(state,5)
@@ -110,6 +139,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(result['ActiveBrightness'],90)
         self.assertEqual(result['MediaLayerKeys'][0]['Action'],[])
         self.assertEqual(result['MediaLayerKeys'][2]['Action'],'F16')
+        self.assertEqual(result['MediaLayerKeys'][2]['Icon'],'radio-playback')
         self.assertEqual(result['PrimaryLayerKeys'][0]['Action'],'F13')
     def test_refuse_duplicate_panel(self):
         self.defaults['MediaLayerKeys'].insert(0,{'Icon':'radio-info'})

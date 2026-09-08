@@ -59,7 +59,7 @@ def main():
                 os.close(raw_fd)
                 raw_fd=None
         if now>=next_metadata:
-            next_metadata=now+1
+            next_metadata=now+.2
             try:
                 with source.open('rb') as stream:
                     raw=stream.read(65537)
@@ -67,7 +67,7 @@ def main():
                 if not isinstance(data,dict): data={}
                 station=data.get('station') or {}
                 if not isinstance(station,dict): station={}
-                filtered={k:data.get(k) for k in ('running','paused','muted','volume','title','error')}
+                filtered={k:data.get(k) for k in ('running','paused','loaded','muted','volume','title','error')}
                 filtered['station']={'name':station.get('name','')}
             except (OSError,ValueError):
                 filtered={}

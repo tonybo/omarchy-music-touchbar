@@ -41,6 +41,28 @@ STATE = Path('/var/lib/omarchy-touchbar-radio/status.json')
 BASE = Path('/etc/omarchy-touchbar-radio/base.toml')
 OUTPUT = Path('/etc/tiny-dfr')
 
+PLAYBACK_ICON = 'radio-playback.svg'
+
+
+def playback_status(state):
+    if state.get('error'):
+        return 'ERROR'
+    if state.get('running') is not True:
+        return 'RADIO'
+    if state.get('paused') is True:
+        return 'PAUSED'
+    if state.get('loaded') is False:
+        return 'LOADING'
+    return 'LIVE'
+
+
+def render_playback(state):
+    playing = playback_status(state) in ('LIVE', 'LOADING')
+    shape = ('<path d="M13 10h8v28h-8zM27 10h8v28h-8z"/>' if playing
+             else '<path d="M15 9v30l24-15z"/>')
+    return f'<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="#ffffff">{shape}</g></svg>'
+
+
 def clean(value, limit):
     text = ' '.join(str(value or '').split())
     result, width = '', 0
@@ -86,7 +108,7 @@ def render(state, elapsed=0):
         track = 'Waiting for track information' if running else 'Tap to open'
     if error:
         track = clean(state.get('error'), 1024)
-    badge = 'ERROR' if error else ('PAUSED' if paused else 'LIVE') if running else 'RADIO'
+    badge = playback_status(state)
     color = '#fb8b9c' if error else '#f5cf82' if paused else '#84ebc6'
     volume = state.get('volume', 70)
     if not isinstance(volume, (int, float)):
@@ -109,13 +131,15 @@ def render(state, elapsed=0):
 <text x="509" y="37" text-anchor="end" font-family="sans-serif" font-size="11" fill="#afc5d8">{detail}</text>
 </svg>'''
 
-def publish(svg):
+def publish(svg, playback=None):
     config = BASE.read_text()
-    digest = hashlib.sha256(svg.encode()).hexdigest()
+    digest = hashlib.sha256((svg + (playback or '')).encode()).hexdigest()
     config += '\n# Radio metadata: ' + digest + '\n'
     tomllib.loads(config)
     # Keep the config inode: tiny-dfr watches this file, not its directory.
     (OUTPUT / 'radio-info.svg').write_text(svg)
+    if playback is not None:
+        (OUTPUT / PLAYBACK_ICON).write_text(playback)
     (OUTPUT / 'config.toml').write_text(config)
 
 def read_status():
@@ -150,6 +174,7 @@ def read_status():
 
 def main():
     previous = None
+    previous_playback = None
     previous_track = None
     started = time.monotonic()
     visual_volume = None
@@ -181,9 +206,11 @@ def main():
             svg = render(state, now - started)
             meter=volume_feedback(state)
             can_refresh=not state.get('touch_active',False) or (meter and (meter['active'] or not state.get('touch_down',False)))
-            if svg != previous and can_refresh:
-                publish(svg)
+            playback = render_playback(state)
+            if (svg != previous or playback != previous_playback) and can_refresh:
+                publish(svg, playback)
                 previous = svg
+                previous_playback = playback
         except (OSError, ValueError, TypeError, OverflowError):
             logging.exception('Could not update Touch Bar radio display')
         time.sleep(0.04)

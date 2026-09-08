@@ -44,6 +44,10 @@ def make_layout(defaults, current, dictation=False):
     for key in media:
         if isinstance(key.get('Action'), str) and key['Action'] in mapping:
             key['Action'] = mapping[key['Action']]
+            if key['Action'] == 'F16':
+                key.pop('Text', None)
+                key.pop('Theme', None)
+                key['Icon'] = 'radio-playback'
     if dictation:
         for layer in (media, merged['PrimaryLayerKeys']):
             if any(k.get('Action') == 'F13' for k in layer):
@@ -82,7 +86,7 @@ Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/etc/tiny-dfr/config.toml /etc/tiny-dfr/radio-info.svg
+ReadWritePaths=/etc/tiny-dfr/config.toml /etc/tiny-dfr/radio-info.svg /etc/tiny-dfr/radio-playback.svg
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true
@@ -136,6 +140,7 @@ def plan(account, width, height, dictation):
     add(ETC/'settings.json',json.dumps({'display_width':width,'display_height':height})+'\n')
     add(config,base,replace=True,dynamic=True)
     add('/etc/tiny-dfr/radio-info.svg','<svg xmlns="http://www.w3.org/2000/svg" width="520" height="48"><text x="12" y="30" fill="white">Radio Atlas</text></svg>',dynamic=True)
+    add('/etc/tiny-dfr/radio-playback.svg','<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><path fill="white" d="M15 9v30l24-15z"/></svg>',dynamic=True)
     add(DATA/'status.json','{}\n',user=True,dynamic=True)
     add('/etc/systemd/system/'+UNIT,unit_text('renderer'))
     for role in ('feed','gestures'):
