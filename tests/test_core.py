@@ -19,9 +19,20 @@ def load(name,path):
 
 g=load('gestures','src/gestures.py')
 r=load('renderer','src/renderer.py')
+f=load('feed','src/feed.py')
 i=load('installer','tools/install.py')
 
 class TouchTests(unittest.TestCase):
+    def test_stuck_virtual_key_does_not_override_released_finger(self):
+        self.assertFalse(f.touch_held(True, False))
+        self.assertTrue(f.touch_held(False, True))
+        self.assertTrue(f.touch_held(True, True))
+        self.assertFalse(f.touch_held(False, False))
+
+    def test_virtual_key_fallback_without_digitizer(self):
+        self.assertTrue(f.touch_held(True, None))
+        self.assertFalse(f.touch_held(False, None))
+
     def test_hardware_omits_unchanged_y_and_axes_on_retouch(self):
         coordinates=g.Coordinates()
         slots={4:coordinates.start(4)}

@@ -7,6 +7,12 @@ from pathlib import Path
 import time
 source=Path(os.environ['XDG_RUNTIME_DIR'])/'omarchy-radio-atlas/status.json'
 target=Path('/var/lib/omarchy-touchbar-radio/status.json')
+def touch_held(virtual_held, raw_held):
+    # The digitizer is authoritative: tiny-dfr can lose a key release on reload.
+    # Fall back to virtual keys only when the digitizer cannot be queried.
+    return virtual_held if raw_held is None else raw_held
+
+
 def main():
     previous=None
     filtered={}
@@ -38,13 +44,13 @@ def main():
                         break
                 except OSError:
                     pass
-        held=False
+        virtual_held=False
+        raw_held=None
         if fd is not None:
             try:
                 bits=bytearray(96)
                 fcntl.ioctl(fd,EVIOCGKEY,bits,True)
-                held=any(bits)
-                if held: cooldown=now+0.6
+                virtual_held=any(bits)
             except OSError:
                 os.close(fd)
                 fd=None
@@ -52,12 +58,12 @@ def main():
             try:
                 bits=bytearray(96)
                 fcntl.ioctl(raw_fd,EVIOCGKEY,bits,True)
-                if bits[330//8] & (1 << (330%8)): # BTN_TOUCH
-                    held=True
-                    cooldown=now+0.6
+                raw_held=bool(bits[330//8] & (1 << (330%8))) # BTN_TOUCH
             except OSError:
                 os.close(raw_fd)
                 raw_fd=None
+        held=touch_held(virtual_held, raw_held)
+        if held: cooldown=now+0.6
         if now>=next_metadata:
             next_metadata=now+.2
             try:
