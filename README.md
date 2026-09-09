@@ -32,7 +32,47 @@ omarchy plugin add https://github.com/AksharP5/omarchy-radio-atlas.git --enable
 
 The digitizer device name currently supported is `Apple Inc. Touch Bar Display Touchpad`. Geometry supports the presence or absence of the on-screen Esc key, but **Apple Silicon and other Touch Bar hardware are not validated**. Contributions for those devices are welcome.
 
-## Install
+## Install the Omarchy plugin
+
+```sh
+omarchy plugin add https://github.com/tonybo/omarchy-touchbar-radio.git --enable
+omarchy-shell shell summon tonybo.touchbar-radio '{}'
+```
+
+The setup panel shows Touch Bar service status and opens a terminal for preview,
+installation, or removal. Enabling the plugin does not install hardware support
+or request administrator access. Choose **Preview setup** to inspect planned
+files, then **Install hardware support** when ready. The terminal asks for
+confirmation before changing anything and uses `sudo` for system files.
+Enable the dictation checkbox only if Voxtype is already configured.
+
+Hardware support requires the dependencies above. The panel can be used without
+a Touch Bar, but hardware installation will refuse unsupported or missing devices.
+If an older prototype is present, follow [migration notes](docs/MIGRATING.md).
+
+The panel is opened on demand; it does not add a permanent status-bar widget.
+Escape or Close dismisses it. **Refresh** checks service status after setup.
+
+### Updates and removal
+
+The shell plugin and installed hardware services have separate lifecycles.
+Updating the plugin checkout does not replace protected installed Python files.
+For a hardware update, uninstall hardware support, update the plugin, and install
+hardware support again. Uninstallation preserves edited files by refusing to
+replace them until conflicts are resolved.
+
+Before removing the shell plugin, choose **Uninstall hardware support** in its
+panel. Then remove the panel:
+
+```sh
+omarchy plugin remove tonybo.touchbar-radio
+```
+
+Disabling or removing only the shell plugin leaves the separately installed
+Touch Bar services running. If the checkout was removed first, clone this
+repository again and run `./install.sh --uninstall` to restore the backups.
+
+## Standalone installation
 
 Run these commands as your normal desktop user:
 
