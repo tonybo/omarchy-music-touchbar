@@ -32,6 +32,10 @@ omarchy plugin add https://github.com/AksharP5/omarchy-radio-atlas.git --enable
 
 The digitizer device name currently supported is `Apple Inc. Touch Bar Display Touchpad`. Geometry supports the presence or absence of the on-screen Esc key, but **Apple Silicon and other Touch Bar hardware are not validated**. Contributions for those devices are welcome.
 
+If holding **Fn** makes the Touch Bar flash or return to the media row, see the
+[tested tiny-dfr Fn-layer fix](docs/FN-LAYER-FIX.md). It preserves layer selection
+during live artwork updates and is installed separately from this plugin.
+
 ## Install the Omarchy plugin
 
 ```sh

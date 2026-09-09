@@ -14,4 +14,6 @@ jobs:
       - name: Run tests
         run: /usr/bin/python3 -m unittest discover -s tests -v
       - name: Check shell syntax
-        run: bash -n install.sh
+        run: |
+          bash -n install.sh
+          bash -n tools/build_tiny_dfr_fn_fix.sh

@@ -27,3 +27,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+The optional Fn-layer patch targets [tiny-dfr](https://github.com/AsahiLinux/tiny-dfr)
+revision `eb711c87fcbddda67be3fd5ff45385b139e8fb34`. The build helper downloads
+that upstream project, whose Cargo manifest declares `MIT AND Apache-2.0`;
+its source and license files remain in the build checkout. No compiled
+tiny-dfr binary is bundled in this repository.

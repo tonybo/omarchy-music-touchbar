@@ -1,0 +1,15 @@
+diff --git a/src/main.rs b/src/main.rs
+index 8b1f1c0..a456fb9 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -920,7 +920,9 @@ fn real_main(drm: &mut DrmBackend) {
+     loop {
+         if cfg_mgr.update_config(&mut cfg, &mut layers, width) {
+             touches = HashMap::<u32, (usize, usize)>::new();
+-            active_layer = 0;
++            // Reloading artwork must not release Fn. Its press/release events
++            // below own active_layer; resetting it here flashes the default
++            // layer during dynamic icon updates while Fn is still held.
+             needs_complete_redraw = true;
+         }
+ 

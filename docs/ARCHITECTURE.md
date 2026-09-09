@@ -43,7 +43,7 @@ Writing only a new SVG is insufficient: tiny-dfr also needs a config notificatio
 - Radio Atlas is the only media source. General MPRIS support is a future extension.
 - Tested hardware is a T2 2170 × 60 Touch Bar. Other display widths need physical validation.
 - The raw digitizer name is currently T2-specific.
-- The updater redraws through tiny-dfr's config reload mechanism, not a native animation API. A future upstream image-refresh API would remove that overhead and improve behavior while switching Fn layers.
+- The updater redraws through tiny-dfr's config reload mechanism, not a native animation API. The [optional tiny-dfr patch](FN-LAYER-FIX.md) preserves Fn layer selection during reloads. A future upstream image-refresh API would remove the full-config reload overhead.
 - Geometry changes require a gesture-service restart.
 - Installation supports one desktop user per machine.
 - Generated config is managed by this project; customizations belong in the base template.
