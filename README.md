@@ -2,8 +2,7 @@
 
 Turn a MacBook Touch Bar into a live radio control surface for **Omarchy + Radio Atlas**.
 
-![Song and artist shown above the station](assets/media-preview.svg)
-![Live swipe-volume meter](assets/volume-preview.svg)
+[![Live Touch Bar lyrics with album artwork, song title, artist, and playback controls](assets/screenshots/lyrics-live-01.png)](assets/screenshots/lyrics-live-01.png)
 
 - Song and artist first, station underneath, with scrolling for long names.
 - Tap the media panel to toggle Radio Atlas open or closed.
@@ -17,6 +16,27 @@ Turn a MacBook Touch Bar into a live radio control surface for **Omarchy + Radio
 - Original brightness, keyboard backlight, and system-volume controls remain available.
 
 This grew out of a working setup on a **T2 MacBook with a 2170 × 60 Touch Bar**, running Omarchy's Hyprland Lua configuration and `tiny-dfr`. The working prototype was tested by hand; the v1.0.0 packaged installer is covered by automated tests but has not yet been exercised on a second machine.
+
+## Lyrics on the Touch Bar
+
+Actual **2170 × 60 framebuffer screenshots** from a T2 MacBook running the live
+lyrics prototype, captured on September 11, 2026. Click either image for full size.
+The cover/title/artist panel sits beside the current lyric and a smaller next-line
+preview, with station and playback controls still within reach.
+
+[![Synchronized lyrics with the elapsed portion of the current line highlighted in mint](assets/screenshots/lyrics-live-02.png)](assets/screenshots/lyrics-live-02.png)
+
+The mint highlight advances with playback timing; it is a line-progress indicator,
+not word-level alignment. Both captures show “Right Beside You” by Sophie B.
+Hawkins at different playback positions. See [karaoke setup](#enable-karaoke-and-song-details)
+for the optional recognition and lyrics dependencies.
+
+### Radio controls
+
+The regular media panel and swipe-volume feedback remain available:
+
+![Song and artist shown above the station](assets/media-preview.svg)
+![Live swipe-volume meter](assets/volume-preview.svg)
 
 ## Requirements
 
