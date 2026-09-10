@@ -2,11 +2,12 @@ import importlib.util
 import json
 import os
 import subprocess
+import types
 from pathlib import Path
 import tempfile
 import tomllib
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 import xml.etree.ElementTree as ET
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -17,6 +18,82 @@ def load(name):
 k=load('karaoke'); r=load('renderer'); g=load('gestures')
 
 class KaraokeTests(unittest.TestCase):
+    def setUp(self):
+        k.find_lyrics.cache_clear()
+
+    def test_longer_recognition_sample_keeps_full_sample_for_timing(self):
+        for seconds in (8, 12):
+            recognizer = Mock()
+            recognizer.recognize = AsyncMock(return_value={'matches': []})
+            constructor = Mock(return_value=recognizer)
+            with patch.dict('sys.modules', {'shazamio': types.SimpleNamespace(Shazam=constructor)}), \
+                    patch.object(k, 'record_radio', return_value=(b'audio', 123)) as capture:
+                with self.assertRaisesRegex(ValueError, 'Song not recognized'):
+                    k.lookup({'title': 'Artist - Song'}, seconds)
+                capture.assert_called_once_with({'title': 'Artist - Song'}, seconds=seconds)
+                constructor.assert_called_once_with(segment_duration_seconds=seconds)
+
+    def test_bilingual_station_title_corroborates_recognition(self):
+        self.assertTrue(k.metadata_agrees(
+            'EPO - 土曜の夜はパラダイス - Do You No Yoru Ha Paradise',
+            'EPO', 'Do You No Yoru Ha Paradise'))
+        self.assertTrue(k.metadata_agrees(
+            '陳勢安 (Andrew Tan) - 第一個明天 (First Dawn)', 'Andrew Tan', 'First Dawn'))
+        self.assertFalse(k.metadata_agrees(
+            'EPO - 土曜の夜はパラダイス - Do You No Yoru Ha Paradise', 'EPO', 'Other Song'))
+        self.assertEqual(k.name_variants('Song - Part Two'), ('Song - Part Two',))
+        self.assertEqual(k.name_variants('夜 - パラダイス'), ('夜 - パラダイス',))
+        self.assertEqual(k.name_variants('我的菜 (feat. Shadow Project)'),
+                         ('我的菜 (feat. Shadow Project)', '我的菜'))
+
+    def test_native_artist_and_title_aliases_find_timed_lyrics(self):
+        def search(url):
+            query = k.urllib.parse.parse_qs(k.urllib.parse.urlsplit(url).query)
+            if query == {'artist_name': ['陳勢安'], 'track_name': ['第一個明天']}:
+                return json.dumps([
+                    {'id': 1, 'artistName': '陳勢安', 'trackName': '第一個明天',
+                     'duration': 249, 'syncedLyrics': '[00:01]test'},
+                    {'id': 2, 'artistName': 'Other', 'trackName': '第一個明天',
+                     'duration': 249, 'syncedLyrics': '[00:01]wrong'},
+                ]).encode()
+            return b'[]'
+        with patch.object(k, 'fetch', side_effect=search):
+            self.assertEqual(k.find_lyrics('Andrew Tan', 'First Dawn', ('第一個明天',), ('陳勢安',)),
+                             ([(1.0, 'test')], 249, False))
+
+    def test_reversed_japanese_artist_order_in_lyrics(self):
+        row = {'id': 1, 'artistName': 'Matsuda Seiko', 'trackName': '真っ赤なロードスター',
+               'duration': 240, 'syncedLyrics': '[00:01]test'}
+        with patch.object(k, 'fetch', return_value=json.dumps([row]).encode()):
+            self.assertEqual(k.find_lyrics('Seiko Matsuda', '真っ赤なロードスター')[0], [(1.0, 'test')])
+
+    def test_recognized_release_wins_over_duplicate_video_timing(self):
+        rows = [
+            {'id': 1, 'artistName': 'MJ116', 'trackName': 'Sweet Baby',
+             'albumName': 'Sweet Baby', 'duration': 182, 'syncedLyrics': '[00:10]test'},
+            {'id': 2, 'artistName': 'MJ116', 'trackName': 'Sweet Baby',
+             'albumName': 'Record Label', 'duration': 243, 'syncedLyrics': '[00:40]test'},
+            {'id': 3, 'artistName': 'MJ116', 'trackName': 'Sweet Baby',
+             'albumName': 'Artist Songs', 'duration': 243, 'syncedLyrics': '[00:40]test'},
+        ]
+        with patch.object(k, 'fetch', return_value=json.dumps(rows).encode()):
+            self.assertEqual(k.find_lyrics('MJ116', 'Sweet Baby', album='Sweet Baby - Single'),
+                             ([(10.0, 'test')], 182, False))
+
+    def test_failed_primary_search_does_not_block_native_alias(self):
+        row = {'id': 1, 'artistName': 'EPO', 'trackName': '土曜の夜はパラダイス',
+               'duration': 240, 'syncedLyrics': '[00:01]test'}
+        with patch.object(k, 'fetch', side_effect=[OSError('timeout'), json.dumps([row]).encode()]):
+            self.assertEqual(k.find_lyrics('EPO', 'Do You No Yoru Ha Paradise', ('土曜の夜はパラダイス',))[0],
+                             [(1.0, 'test')])
+        k.find_lyrics.cache_clear()
+        with patch.object(k, 'fetch', side_effect=OSError('timeout')):
+            with self.assertRaises(ValueError):
+                k.find_lyrics('EPO', 'Do You No Yoru Ha Paradise')
+        with patch.object(k, 'fetch', return_value=b'[]') as fetch:
+            self.assertEqual(k.find_lyrics('EPO', 'Do You No Yoru Ha Paradise'), ([], 0, False))
+            fetch.assert_called_once()
+
     def test_repeated_timestamps_offsets_and_blank_instrumental(self):
         lines=k.parse_lrc('[offset:-500]\n[00:01.00][00:03.50]hello\n[00:05.00]\n[00:99]invalid')
         self.assertEqual(lines,[(.5,'hello'),(3.,'hello'),(4.5,'')])
@@ -120,6 +197,34 @@ class KaraokeTests(unittest.TestCase):
         data=[{'artistName':'Other','trackName':'Title','syncedLyrics':'[00:01]other'}]
         with patch.object(k,'fetch',return_value=json.dumps(data).encode()):
             self.assertEqual(k.find_lyrics('Artist','Title'),([],0,False))
+
+    def test_controllable_artist_matching(self):
+        args = ('S Club 7 - Bring It All Back', 'S Club', 'Bring It All Back')
+        self.assertFalse(k.metadata_agrees(*args, mode='strict'))
+        self.assertTrue(k.metadata_agrees(*args, mode='balanced'))
+        self.assertTrue(k.metadata_agrees(*args, mode='relaxed'))
+        variant = ('Florence - Hello', 'Florance', 'Hello')
+        self.assertFalse(k.metadata_agrees(*variant, mode='balanced'))
+        self.assertTrue(k.metadata_agrees(*variant, mode='relaxed'))
+        typo = ('Coldplay - Yellow', 'Coldply', 'Yellow')
+        self.assertTrue(k.metadata_agrees(*typo, mode='balanced'))
+        variant = ('Adele - Hello', 'Adelle', 'Hello')
+        self.assertTrue(k.metadata_agrees(*variant, mode='balanced'))
+        for mode in ('balanced', 'relaxed'):
+            self.assertFalse(k.metadata_agrees('S Club 7 - Bring It All Back', 'S Club', 'Never Had a Dream Come True', mode=mode))
+            self.assertFalse(k.metadata_agrees('Artist - Song', 'Other Artist', 'Song', mode=mode))
+            self.assertFalse(k.metadata_agrees('AB - Song', 'ABC', 'Song', mode=mode))
+            self.assertFalse(k.metadata_agrees('S Club 7 - 日本語', 'S Club', 'English', mode=mode))
+
+    def test_matching_config_is_reloaded_and_invalid_defaults_to_strict(self):
+        with tempfile.TemporaryDirectory() as td, patch.object(k, 'MATCH_CONFIG', Path(td) / 'matching.json'):
+            self.assertEqual(k.matching_mode(), 'strict')
+            for mode in ('balanced', 'relaxed', 'strict'):
+                k.MATCH_CONFIG.write_text(json.dumps({'mode': mode}))
+                self.assertEqual(k.matching_mode(), mode)
+            for value in ('invalid json', '[]', '{"mode": []}', '{"mode": "anything"}'):
+                k.MATCH_CONFIG.write_text(value)
+                self.assertEqual(k.matching_mode(), 'strict')
     def test_airplay_delay_is_taken_from_negotiated_process_latency(self):
         graph=[{'type':'PipeWire:Interface:Node','info':{
             'props':{'node.name':'raop_sink.test'},

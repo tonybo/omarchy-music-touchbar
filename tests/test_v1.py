@@ -24,10 +24,33 @@ k = load('karaoke')
 g = load('gestures')
 r = load('renderer')
 d = load('song_details')
+f = load('feed')
 i = load('install', 'tools')
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_fresh_lyrics_written_after_loop_start_are_not_dropped(self):
+        station = {'uuid': 'radio'}
+        snapshot = {'key': ['radio', 'Song'], 'updated_at': 10.005}
+        # A loop that began at 10.0 must accept a snapshot read at 10.01.
+        with patch.object(f.time, 'monotonic', return_value=10.01):
+            self.assertIs(f.current_karaoke(snapshot, station, 'Song'), snapshot)
+            self.assertEqual(f.current_karaoke(snapshot, station, 'Other song'), {})
+            self.assertEqual(f.current_karaoke(dict(snapshot, updated_at=11), station, 'Song'), {})
+            self.assertEqual(f.current_karaoke(dict(snapshot, updated_at=7), station, 'Song'), {})
+            self.assertEqual(f.current_karaoke([], station, 'Song'), {})
+
+    def test_pipewire_matching_normalizes_only_whitespace(self):
+        title = '王忻辰 and 苏星婕 - 清空'
+        inputs = [{'index': 7, 'sink': 2, 'properties': {'application.name': 'mpv', 'media.name': '(null)', 'object.serial': '580'}},
+                  {'index': 8, 'sink': 2, 'properties': {'application.name': 'mpv', 'media.name': '(null)', 'object.serial': '581'}}]
+        graph = [{'type': 'PipeWire:Interface:Node', 'info': {'props': {'application.name': 'mpv', 'media.name': '王忻辰  and  苏星婕 - 清空 - mpv', 'object.serial': 580}}}]
+        with patch.object(k, 'pulse_json', side_effect=[inputs, [{'index': 2, 'name': 'alsa.test'}]]), patch.object(k.subprocess, 'check_output', return_value=json.dumps(graph).encode()):
+            self.assertEqual(k.radio_input({'title': title}), (7, 'alsa.test.monitor', 0.0))
+        with patch.object(k, 'pulse_json', return_value=inputs), patch.object(k.subprocess, 'check_output', return_value=json.dumps(graph).encode()):
+            with self.assertRaises(ValueError):
+                k.radio_input({'title': 'Another song'})
+
     def test_native_title_lyrics_keep_artist_and_recording_checks(self):
         rows = [
             {'id': 1, 'artistName': 'Other', 'trackName': '倒數', 'duration': 229, 'syncedLyrics': '[00:01]wrong'},
@@ -165,6 +188,14 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(len(doc.findall('s:defs/s:clipPath', ns)), 2)
         short = {'karaoke': {'title': '短い曲', 'artist': '歌手'}}
         self.assertEqual(r.render_track(short, 0), r.render_track(short, 5))
+
+    def test_lyric_keep_awake_flag_is_removed_when_not_requested(self):
+        import tomllib
+        base = 'MediaLayerKeys=[{Action="PlayPause"}]'
+        active = r.layout_config(base, True, True, 8, 900, True)
+        self.assertTrue(tomllib.loads(active)['KeepAwake'])
+        self.assertNotIn('KeepAwake', tomllib.loads(r.layout_config(base)))
+        self.assertNotIn('KeepAwake', tomllib.loads(r.layout_config(active, True, True, 8, 900, False)))
 
     def test_karaoke_disabled_retains_regular_radio_layout(self):
         self.assertFalse(r.music_layout({'running': True, 'karaoke': {}}))

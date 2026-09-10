@@ -68,6 +68,15 @@ class TouchTests(unittest.TestCase):
             a,b=g.panel_bounds(2008)
             self.assertEqual(a,0);self.assertLess(b,2008)
 
+    def test_config_rewrite_cannot_crash_gestures_or_leave_stale_target(self):
+        valid = 'MediaLayerKeys=[{Icon="radio-info",Stretch=5},{Text="X"}]'
+        for incomplete in ('', 'MediaLayerKeys=[', 'MediaLayerKeys=[]',
+                           'MediaLayerKeys="invalid"', 'MediaLayerKeys=[{Stretch=0}]'):
+            with patch.object(Path, 'read_text', side_effect=[incomplete, valid]):
+                self.assertEqual(g.panel_bounds(), (-1, -1))
+                left, right = g.panel_bounds()
+                self.assertGreater(right, left)
+
 class RenderTests(unittest.TestCase):
     def test_playback_button_and_badge_follow_state(self):
         live = {'running': True, 'paused': False, 'loaded': True}

@@ -5,9 +5,11 @@ Only the matching Radio Atlas sink-input is recorded, never a microphone.
 Network operations run off the publisher thread. No audio is saved to disk.
 """
 import asyncio
+import argparse
 import base64
 import bisect
 from concurrent.futures import ThreadPoolExecutor
+from difflib import SequenceMatcher
 import io
 from functools import lru_cache
 import json
@@ -30,6 +32,8 @@ RUNTIME = Path(os.environ.get('XDG_RUNTIME_DIR', '/run/user/' + str(os.getuid())
 RADIO = RUNTIME / 'omarchy-radio-atlas/status.json'
 OUT = RUNTIME / 'touchbar-karaoke.json'
 UI = RUNTIME / 'touchbar-karaoke-ui.json'
+MATCH_CONFIG = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'radio-touchbar/lyrics-matching.json'
+MATCH_THRESHOLDS = {'strict': 1.0, 'balanced': 0.90, 'relaxed': 0.85}
 SONG_DETAILS = runpy.run_path(str(Path(__file__).with_name('song_details.py')))['details']
 UA = 'OmarchyTouchbarRadio/1.0 (https://github.com/tonybo/omarchy-touchbar-radio)'
 
@@ -57,7 +61,37 @@ def split_title(text):
     return (parts[0].strip(), parts[1].strip()) if len(parts) == 2 else ('', str(text).strip())
 
 
-def metadata_agrees(radio_title, artist, title):
+def writing_systems(text):
+    systems = {unicodedata.name(c, '').split(' ')[0] for c in text if c.isalpha()}
+    # Kanji, hiragana and katakana can all belong to a single Japanese title.
+    return {('CJK' if s in ('CJK', 'HIRAGANA', 'KATAKANA') else s) for s in systems}
+
+
+def name_variants(text):
+    """Extract explicit bilingual names, never guess a translation."""
+    text = str(text).strip()
+    parts = [p.strip() for p in re.split(r'\s+[-–—/]\s+|[（(]|[）)]', text) if p.strip()]
+    if len(parts) == 2 and re.match(r'^(?:feat\.?|ft\.?|featuring)\s', parts[1], re.I):
+        # Featured credits are not translated song titles.
+        return tuple(dict.fromkeys((text, parts[0])))
+    if (len(parts) == 2 and writing_systems(parts[0]) and writing_systems(parts[1])
+            and not writing_systems(parts[0]) & writing_systems(parts[1])):
+        return tuple(dict.fromkeys((text, *parts)))
+    return (text,) if text else ()
+
+
+def artist_key(text):
+    # Japanese artists are often catalogued in both given/family-name orders.
+    return tuple(sorted(normalize(word) for word in text.split() if normalize(word)))
+
+
+def matching_mode():
+    settings = read_json(MATCH_CONFIG)
+    mode = settings.get('mode') if isinstance(settings, dict) else None
+    return mode if isinstance(mode, str) and mode in MATCH_THRESHOLDS else 'strict'
+
+
+def metadata_agrees(radio_title, artist, title, mode=None):
     """Require corroboration when the station supplies artist - title metadata.
 
     Different writing systems are inconclusive, not proof of a wrong match.
@@ -68,19 +102,30 @@ def metadata_agrees(radio_title, artist, title):
         return True
 
     def compare(expected, actual):
+        if {normalize(v) for v in name_variants(expected)} & {normalize(v) for v in name_variants(actual)}:
+            return True
         # Ignore edition suffixes and artist-name ordering, not arbitrary words.
         def words(value):
             value = re.sub(r'\([^)]*\)|\[[^]]*\]', '', value)
             return sorted(normalize(w) for w in value.split() if normalize(w))
         if normalize(expected) == normalize(actual) or words(expected) == words(actual):
             return True
-        def scripts(value):
-            return {unicodedata.name(c, '').split(' ')[0] for c in value if c.isalpha()}
-        if scripts(expected) & scripts(actual):
+        if writing_systems(expected) & writing_systems(actual):
             return False
         return None
 
     verdicts = [compare(expected_artist, artist), compare(expected_title, title)]
+    mode = matching_mode() if mode is None else mode
+    # Fuzzy artist names require independently corroborated song titles.
+    # Short names and transliteration-only title matches remain conservative.
+    if verdicts == [False, True] and mode in ('balanced', 'relaxed'):
+        left, right = normalize(expected_artist), normalize(artist)
+        score = min(SequenceMatcher(None, left, right).ratio(),
+                    SequenceMatcher(None, right, left).ratio())
+        if min(len(left), len(right)) >= 5 and score >= MATCH_THRESHOLDS[mode]:
+            logging.info('Accepted fuzzy artist match %s / %s (%.3f, %s); title corroborated',
+                         expected_artist, artist, score, mode)
+            verdicts[0] = True
     return True in verdicts and False not in verdicts
 
 
@@ -121,24 +166,53 @@ def fetch(url, limit=2_000_000):
 
 
 @lru_cache(maxsize=64)
-def find_lyrics(artist, title, aliases=()):
-    query = urllib.parse.urlencode({'artist_name': artist, 'track_name': title})
-    rows = json.loads(fetch('https://lrclib.net/api/search?' + query))
-    for alternate in aliases:
-        extra = urllib.parse.urlencode({'artist_name': artist, 'track_name': alternate})
-        rows.extend(json.loads(fetch('https://lrclib.net/api/search?' + extra)))
+def find_lyrics(artist, title, aliases=(), artist_aliases=(), album=''):
+    artists = tuple(dict.fromkeys(v for a in (artist, *artist_aliases) for v in name_variants(a)))[:3]
+    titles = tuple(dict.fromkeys(v for t in (title, *aliases) for v in name_variants(t)))[:4]
+    rows = []
+    failures = 0
+    for alternate_artist in artists:
+        for alternate_title in titles:
+            query = urllib.parse.urlencode({'artist_name': alternate_artist, 'track_name': alternate_title})
+            try:
+                result = json.loads(fetch('https://lrclib.net/api/search?' + query))
+                if not isinstance(result, list):
+                    raise ValueError('Invalid lyrics search response')
+                rows.extend(r for r in result if isinstance(r, dict))
+            except (OSError, ValueError):
+                failures += 1
+                logging.warning('Lyrics search failed for %s / %s', alternate_artist, alternate_title)
     # Never put another artist's lyrics on the display just because a title matches.
-    rows = [r for r in rows if normalize(r.get('artistName', '')) == normalize(artist)
-            and normalize(r.get('trackName', '')) in {normalize(t) for t in (title, *aliases)}]
+    rows = [r for r in rows if any(
+            normalize(v) == normalize(a) or artist_key(v) == artist_key(a)
+            for v in name_variants(r.get('artistName', '')) for a in artists)
+            and {normalize(v) for v in name_variants(r.get('trackName', ''))}
+            & {normalize(t) for t in titles}]
+    # Searches can return the same recording; don't count it as extra support.
+    rows = list({json.dumps(r, sort_keys=True): r for r in rows}.values())
     rows = [r for r in rows if 'live' not in str(r.get('albumName', '')).casefold() or 'live' in title.casefold()]
+    def album_key(value):
+        # Catalogues commonly append " - Single" or " - EP" to releases.
+        return normalize(re.sub(r'\s+[-–—]\s+(?:Single|EP)$', '', value, flags=re.I))
+    if album_key(album):
+        release_rows = [r for r in rows if album_key(str(r.get('albumName') or '')) == album_key(album)]
+        if release_rows:
+            # Repeated uploads of a video cut must not outvote the actual
+            # release identified by the audio recognizer.
+            rows = release_rows
     def duration_support(row):
         duration = float(row.get('duration') or 0)
         return sum(abs(float(other.get('duration') or 0) - duration) <= 2 for other in rows)
     supports = {r.get('id'): duration_support(r) for r in rows}
     rows.sort(key=lambda r: (not bool(r.get('syncedLyrics')), -supports[r.get('id')], r.get('id', 0)))
     if not rows:
+        if failures:
+            # Exceptions are not cached, so transient failures can be retried.
+            raise ValueError('Lyrics search temporarily unavailable')
         return [], 0, False
     row = rows[0]
+    logging.info('Lyrics entry %s: %s / %s, album %s, duration %ss',
+                 row.get('id'), artist, title, row.get('albumName'), row.get('duration'))
     return parse_lrc(row.get('syncedLyrics') or ''), float(row.get('duration') or 0), bool(row.get('instrumental'))
 
 
@@ -186,12 +260,15 @@ def pulse_json(kind):
 
 
 def radio_input(state):
-    title = state.get('title', '')
+    # mpv and Radio Atlas can format repeated whitespace differently.
+    title = ' '.join(str(state.get('title', '')).split())
+    def same_media_name(value):
+        return bool(title) and ' '.join(str(value or '').split()) == title + ' - mpv'
     inputs = pulse_json('sink-inputs')
     # Radio Atlas uses a dedicated mpv. Match its actual media name, not any
     # default monitor (which could contain calls or another application's audio).
     matches = [s for s in inputs if s.get('properties', {}).get('application.name') == 'mpv'
-               and title and s.get('properties', {}).get('media.name') == title + ' - mpv']
+               and same_media_name(s.get('properties', {}).get('media.name'))]
     if not matches and any(s.get('properties', {}).get('application.name') == 'mpv'
                            and s.get('properties', {}).get('media.name') in ('(null)', None)
                            for s in inputs):
@@ -201,7 +278,7 @@ def radio_input(state):
         serials = {str(n.get('info', {}).get('props', {}).get('object.serial'))
                    for n in graph if n.get('type') == 'PipeWire:Interface:Node'
                    and n.get('info', {}).get('props', {}).get('application.name') == 'mpv'
-                   and n.get('info', {}).get('props', {}).get('media.name') == title + ' - mpv'}
+                   and same_media_name(n.get('info', {}).get('props', {}).get('media.name'))}
         matches = [s for s in inputs if str(s.get('properties', {}).get('object.serial')) in serials]
     if len(matches) != 1:
         raise ValueError('Radio audio stream not uniquely identified')
@@ -258,11 +335,13 @@ def record_radio(state, seconds=8):
     return buf.getvalue(), start + delay
 
 
-def lookup(state):
+def lookup(state, sample_seconds=8):
     from shazamio import Shazam
-    audio, captured = record_radio(state)
-    # An 8-second sample avoids library subsegment selection on long recordings.
-    result = asyncio.run(asyncio.wait_for(Shazam().recognize(audio), timeout=25))
+    audio, captured = record_radio(state, seconds=sample_seconds)
+    # Analyze the whole sample. Library center-cropping would shift the
+    # fingerprint relative to captured and make the lyric anchor inaccurate.
+    result = asyncio.run(asyncio.wait_for(
+        Shazam(segment_duration_seconds=sample_seconds).recognize(audio), timeout=25))
     track = result.get('track') or {}
     matches = result.get('matches') or []
     if not track or not matches:
@@ -287,7 +366,15 @@ def lookup(state):
         link = urllib.parse.urlsplit(str(track.get('url', '')))
         native = urllib.parse.unquote(link.path.rstrip('/').rsplit('/', 1)[-1])
         aliases = (native,) if link.hostname in ('www.shazam.com', 'shazam.com') and any(ord(c) > 127 for c in native) and normalize(native) != normalize(title) else ()
-        lines, duration, instrumental = find_lyrics(artist, title, aliases)
+        radio_artist, radio_title = split_title(state.get('title', ''))
+        # These variants are usable only after metadata_agrees above has
+        # corroborated this fingerprint against the station's current song.
+        aliases = tuple(dict.fromkeys((*aliases, radio_title))) if radio_artist else aliases
+        artist_aliases = (radio_artist,) if radio_artist else ()
+        album = next((str(item.get('text') or '')
+                      for section in track.get('sections', []) if section.get('type') == 'SONG'
+                      for item in section.get('metadata', []) if item.get('title') == 'Album'), '')
+        lines, duration, instrumental = find_lyrics(artist, title, aliases, artist_aliases, album)
     except Exception:
         logging.warning('Lyrics lookup unavailable', exc_info=True)
         lines, duration, instrumental = [], 0, False
@@ -336,7 +423,7 @@ def main():
             retry = now + (35 if current else 20)
         if active and not paused and state.get('loaded') is not False and now >= retry and future is None:
             pending_epoch = epoch
-            future = executor.submit(lookup, dict(state))
+            future = executor.submit(lookup, dict(state), 12 if last_error else 8)
         artist, title = split_title(state.get('title', ''))
         data = {'active': active, 'paused': paused, 'key': key, 'updated_at': now,
                 'artist': artist, 'title': title, 'cover': '', 'status': 'paused' if paused else 'syncing',
@@ -359,4 +446,17 @@ def main():
         time.sleep(.1)
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--matching', choices=MATCH_THRESHOLDS,
+                        help='Save artist matching mode for subsequent recognition attempts and exit')
+    args = parser.parse_args()
+    if args.matching:
+        MATCH_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', dir=MATCH_CONFIG.parent, delete=False) as f:
+            json.dump({'mode': args.matching}, f)
+            temporary = Path(f.name)
+        temporary.replace(MATCH_CONFIG)
+        print('Lyrics matching: ' + args.matching)
+    else:
+        main()

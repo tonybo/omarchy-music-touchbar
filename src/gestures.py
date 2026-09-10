@@ -60,7 +60,17 @@ def current_volume():
     except (OSError,ValueError,TypeError): return 70
 
 def panel_bounds(width=2170):
-    keys=tomllib.loads(Path('/etc/tiny-dfr/config.toml').read_text())['MediaLayerKeys']
+    # The renderer rewrites this inode for tiny-dfr's file watcher. A read
+    # during that write can see an empty or incomplete config. Disable the
+    # touch target for this poll; the next poll will recover its geometry.
+    try:
+        keys=tomllib.loads(Path('/etc/tiny-dfr/config.toml').read_text()).get('MediaLayerKeys', [])
+    except (OSError, ValueError):
+        return -1, -1
+    if not isinstance(keys, list) or not keys or any(
+            not isinstance(k, dict) or not isinstance(k.get('Stretch', 1), int)
+            or k.get('Stretch', 1) <= 0 for k in keys):
+        return -1, -1
     total=int(width >= 2170)+sum(k.get('Stretch',1) for k in keys)
     unit=(width-16*(total-1))/total
     start=int(width >= 2170)

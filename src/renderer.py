@@ -177,8 +177,12 @@ def lyrics_geometry(state):
     return 3, 300
 
 
-def layout_config(base, compact=False, running=False, panel_span=8, panel_width=900):
+def layout_config(base, compact=False, running=False, panel_span=8, panel_width=900, keep_awake=False):
     data=tomllib.loads(base)
+    if keep_awake:
+        data['KeepAwake'] = True
+    else:
+        data.pop('KeepAwake', None)
     keys=data.get('MediaLayerKeys', [])
     if compact:
         keep={'F15','F16','F17','PreviousSong','PlayPause','NextSong','Mute','VolumeDown','VolumeUp'}
@@ -269,8 +273,8 @@ def publish_icon(name, content):
     temp.replace(target)
 
 
-def publish(svg, dictation=None, playback=None, track=None, compact=False, running=False, panel_span=8, panel_width=900):
-    config = layout_config(BASE.read_text(), compact, running, panel_span, panel_width)
+def publish(svg, dictation=None, playback=None, track=None, compact=False, running=False, panel_span=8, panel_width=900, keep_awake=False):
+    config = layout_config(BASE.read_text(), compact, running, panel_span, panel_width, keep_awake)
     digest = hashlib.sha256((svg + (dictation or '') + (playback or '') + (track or '')).encode()).hexdigest()
     config += '\n# Radio metadata: ' + digest + '\n'
     tomllib.loads(config)
@@ -351,7 +355,8 @@ def main():
                 visual_volume = None
             compact = music_layout(state)
             panel_span, panel_width = lyrics_geometry(state)
-            layout = (compact, state.get('running') is True, panel_span, panel_width)
+            keep_awake = compact and not state.get('paused') and (state.get('karaoke') or {}).get('status') == 'synced'
+            layout = (compact, state.get('running') is True, panel_span, panel_width, keep_awake)
             svg = render_lyrics(state, panel_width) if compact and not volume_feedback(state) else render(state, now - started)
             track_svg = render_track(state, now - started) if compact else None
             meter=volume_feedback(state)

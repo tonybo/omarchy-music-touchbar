@@ -87,3 +87,6 @@ sudo systemctl restart tiny-dfr.service
 
 The unused `/usr/local/libexec/tiny-dfr-fn-fix` binary and build directory may
 then be removed. Radio plugin removal does not remove this separate override.
+
+The updated build helper also includes the [lyric keep-awake extension](LYRIC-DISPLAY.md),
+which prevents ordinary idle dimming while synchronized lyrics are visible.

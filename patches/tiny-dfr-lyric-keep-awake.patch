@@ -1,0 +1,84 @@
+diff --git i/src/backlight.rs w/src/backlight.rs
+index 85d6a6c..3af7878 100644
+--- i/src/backlight.rs
++++ w/src/backlight.rs
+@@ -117,6 +117,11 @@ impl BacklightManager {
+         }
+     }
+     pub fn update_backlight(&mut self, cfg: &Config) {
++        // Keep visible lyrics awake only while the publisher keeps refreshing
++        // the config. A stalled/stopped publisher cannot inhibit idle forever.
++        if keep_awake_valid(cfg.keep_awake, cfg.loaded_at.elapsed().as_millis()) {
++            self.last_active = Instant::now();
++        }
+         let since_last_active = (Instant::now() - self.last_active).as_millis() as u64;
+         let new_bl = min(
+             self.max_bl,
+@@ -148,3 +153,20 @@ impl BacklightManager {
+         self.current_bl
+     }
+ }
++
++fn keep_awake_valid(enabled: bool, age_ms: u128) -> bool {
++    enabled && age_ms < 3000
++}
++
++#[cfg(test)]
++mod tests {
++    use super::keep_awake_valid;
++
++    #[test]
++    fn lyric_activity_expires_and_requires_opt_in() {
++        assert!(keep_awake_valid(true, 0));
++        assert!(keep_awake_valid(true, 2999));
++        assert!(!keep_awake_valid(true, 3000));
++        assert!(!keep_awake_valid(false, 0));
++    }
++}
+diff --git i/src/config.rs w/src/config.rs
+index 063c318..1629a0f 100644
+--- i/src/config.rs
++++ w/src/config.rs
+@@ -22,6 +22,8 @@ pub struct Config {
+     pub font_face: FontFace,
+     pub adaptive_brightness: bool,
+     pub active_brightness: u32,
++    pub keep_awake: bool,
++    pub loaded_at: std::time::Instant,
+     pub double_press_switch_layers: u32,
+ }
+ 
+@@ -34,6 +36,7 @@ struct ConfigProxy {
+     font_template: Option<String>,
+     adaptive_brightness: Option<bool>,
+     active_brightness: Option<u32>,
++    keep_awake: Option<bool>,
+     double_press_switch_layers: Option<u32>,
+     primary_layer_keys: Option<Vec<ButtonConfig>>,
+     media_layer_keys: Option<Vec<ButtonConfig>>,
+@@ -114,6 +117,7 @@ fn load_config(width: u16) -> (Config, [FunctionLayer; 2]) {
+         base.media_layer_keys = user.media_layer_keys.or(base.media_layer_keys);
+         base.primary_layer_keys = user.primary_layer_keys.or(base.primary_layer_keys);
+         base.active_brightness = user.active_brightness.or(base.active_brightness);
++        base.keep_awake = user.keep_awake.or(base.keep_awake);
+         base.double_press_switch_layers = user.double_press_switch_layers.or(base.double_press_switch_layers);
+     };
+     let mut media_layer_keys = base.media_layer_keys.unwrap();
+@@ -150,6 +154,8 @@ fn load_config(width: u16) -> (Config, [FunctionLayer; 2]) {
+         adaptive_brightness: base.adaptive_brightness.unwrap(),
+         font_face: load_font(&base.font_template.unwrap()),
+         active_brightness: base.active_brightness.unwrap(),
++        keep_awake: base.keep_awake.unwrap_or(false),
++        loaded_at: std::time::Instant::now(),
+         double_press_switch_layers: base.double_press_switch_layers.unwrap(),
+     };
+     (cfg, layers)
+@@ -161,7 +167,7 @@ pub struct ConfigManager {
+ }
+ 
+ fn arm_inotify(inotify_fd: &Inotify) -> Option<WatchDescriptor> {
+-    let flags = AddWatchFlags::IN_MOVED_TO | AddWatchFlags::IN_CLOSE | AddWatchFlags::IN_ONESHOT;
++    let flags = AddWatchFlags::IN_MOVED_TO | AddWatchFlags::IN_CLOSE_WRITE | AddWatchFlags::IN_ONESHOT;
+     match inotify_fd.add_watch(USER_CFG_PATH, flags) {
+         Ok(wd) => Some(wd),
+         Err(Errno::ENOENT) => None,

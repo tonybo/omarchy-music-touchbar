@@ -2,6 +2,7 @@
 """Forward radio metadata and Touch Bar hold state; do not grab input."""
 import fcntl
 import json
+import logging
 import os
 from pathlib import Path
 import time
@@ -25,6 +26,18 @@ def touch_held(virtual_held, raw_held):
     # The digitizer is authoritative: tiny-dfr can lose a key release on reload.
     # Fall back to virtual keys only when the digitizer cannot be queried.
     return virtual_held if raw_held is None else raw_held
+
+
+def current_karaoke(karaoke, station, title):
+    """Evaluate freshness after the file has been read, not before its writer ran."""
+    if not isinstance(karaoke, dict):
+        return {}
+    stamp = karaoke.get('updated_at', 0)
+    observed_at = time.monotonic()
+    expected = [station.get('uuid', station.get('name', '')), title]
+    if isinstance(stamp, (int, float)) and 0 <= observed_at - stamp < 3 and karaoke.get('key') == expected:
+        return karaoke
+    return {}
 
 
 def main():
@@ -97,11 +110,10 @@ def main():
             with path.open('rb') as stream:
                 raw = stream.read(49153)
             karaoke = json.loads(raw) if len(raw) <= 49152 else {}
-            stamp = karaoke.get('updated_at', 0)
-            if isinstance(stamp, (int, float)) and 0 <= now - stamp < 3:
-                expected = [station.get('uuid', station.get('name', '')), filtered.get('title', '')]
-                if karaoke.get('key') == expected:
-                    filtered['karaoke'] = karaoke
+            filtered['karaoke'] = current_karaoke(karaoke, station, filtered.get('title', ''))
+            if filtered['karaoke'] and karaoke['updated_at'] > now:
+                logging.warning('Prevented lyric freshness race: snapshot arrived %.3f ms after loop start',
+                                (karaoke['updated_at'] - now) * 1000)
         except (OSError, ValueError, TypeError, AttributeError, UnboundLocalError):
             pass
         try:

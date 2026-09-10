@@ -29,6 +29,8 @@ git -C "$build_dir/source" apply --check "$project_dir/patches/tiny-dfr-preserve
 git -C "$build_dir/source" apply "$project_dir/patches/tiny-dfr-preserve-fn-layer.patch"
 git -C "$build_dir/source" apply --check "$project_dir/patches/tiny-dfr-handle-device-loss.patch"
 git -C "$build_dir/source" apply "$project_dir/patches/tiny-dfr-handle-device-loss.patch"
+git -C "$build_dir/source" apply --check "$project_dir/patches/tiny-dfr-lyric-keep-awake.patch"
+git -C "$build_dir/source" apply "$project_dir/patches/tiny-dfr-lyric-keep-awake.patch"
 (cd -- "$build_dir/source" && cargo build --release --locked)
 target_dir=${CARGO_TARGET_DIR:-target}
 [[ $target_dir == /* ]] || target_dir="$build_dir/source/$target_dir"

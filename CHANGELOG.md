@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Match explicit bilingual song titles and corroborated artist aliases, including
+  Japanese artist-name ordering. Failed alias requests no longer discard other results.
+- Prefer the recognized release when selecting timed lyrics, preventing duplicate
+  entries for longer versions from overriding the matching single.
+- Retry audio recognition with a twelve-second sample after a failed attempt.
+- Keep the gesture helper running when it reads an incomplete layout update.
+- Avoid rejecting fresh lyric snapshots and normalize whitespace in radio audio titles.
+- Add optional tiny-dfr keep-awake support while synchronized lyrics are visible.
+
+See [lyric display notes](docs/LYRIC-DISPLAY.md) for matching settings, limitations,
+and the optional daemon rebuild. These changes pass 63 Python tests; live checks
+verified Chinese lyrics and the corrected Sweet Baby release selection.
+
 ## 1.0.0 — 2026-09-11
 
 ### Added

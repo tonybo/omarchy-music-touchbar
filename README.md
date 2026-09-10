@@ -252,6 +252,9 @@ expands when timed lyrics arrive. Confirmed instrumentals hide it. Genres are no
 blacklisted: vocal jazz can still have lyrics. Recognition retries use a small
 emoji animation. Native titles from Shazam's song links are checked alongside
 translated display titles, while artist checks reject unrelated results.
+Explicit bilingual radio titles and corroborated artist aliases are also searched.
+The recognized album is preferred when multiple lyric versions exist. See
+[matching and display troubleshooting](docs/LYRIC-DISPLAY.md) for details.
 
 The song window includes high-resolution artwork (up to 640 pixels, depending
 on the source), album, label, release year and genre when supplied by recognition.
@@ -263,7 +266,7 @@ service prevent profile-conflict dialogs and simultaneous launches.
 
 ### Network use and timing
 
-The worker captures eight seconds from the uniquely matched Radio Atlas audio
+The worker captures eight seconds (twelve after a failed attempt) from the uniquely matched Radio Atlas audio
 stream, never a microphone or the unrestricted system mix. ShazamIO derives an
 audio fingerprint for Shazam recognition. Artist and song names go to LRCLIB;
 `--with-background` additionally sends artist, song and album names to Wikipedia.
