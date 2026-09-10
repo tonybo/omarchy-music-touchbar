@@ -30,6 +30,8 @@ Item {
     function setup(action) {
         var args = ["omarchy", "launch", "terminal", "python3", pluginDirectory + "tools/plugin_setup.py", action]
         if (dictation.checked && action !== "uninstall") args.push("--with-dictation")
+        if (karaoke.checked && action !== "uninstall") args.push("--with-karaoke")
+        if (karaoke.checked && background.checked && action !== "uninstall") args.push("--with-background")
         Quickshell.execDetached(args)
         close()
     }
@@ -101,8 +103,27 @@ Item {
                             "\nRenderer: " + (root.status.renderer || "unknown") +
                             "\nMetadata: " + (root.status.feed || "unknown") +
                             "\nGestures: " + (root.status.gestures || "unknown") +
+                            "\nKaraoke: " + (root.status.karaoke || "not installed") +
                             "\nRadio Atlas: " + (root.status.radioAtlas ? "found" : "not found") +
                             "\nHyprland Lua: " + (root.status.hyprlandLua ? "found" : "not found"))
+                        color: Color.menu.text
+                        wrapMode: Text.WordWrap
+                    }
+                    CheckBox {
+                        id: karaoke
+                        text: "Enable song recognition and timed lyrics"
+                        palette.windowText: Color.menu.text
+                    }
+                    CheckBox {
+                        id: background
+                        enabled: karaoke.checked
+                        text: "Include Wikipedia song and artist background"
+                        palette.windowText: Color.menu.text
+                    }
+                    Text {
+                        width: parent.width
+                        visible: karaoke.checked
+                        text: "Requires the Python 3.12 environment described in the README. Recognition sends a short sample of radio audio to Shazam and song names to LRCLIB. Background lookup also sends names to Wikipedia."
                         color: Color.menu.text
                         wrapMode: Text.WordWrap
                     }

@@ -1,4 +1,4 @@
-# Omarchy Touch Bar Radio
+# Omarchy Touch Bar Radio v1.0.0
 
 Turn a MacBook Touch Bar into a live radio control surface for **Omarchy + Radio Atlas**.
 
@@ -9,10 +9,14 @@ Turn a MacBook Touch Bar into a live radio control surface for **Omarchy + Radio
 - Tap the media panel to toggle Radio Atlas open or closed.
 - Swipe left or right to adjust **radio volume**, with 1% increments and an eased level meter while your finger moves.
 - Previous station, play/pause, and next station controls. The button shows pause while playing and play while paused or stopped.
+- Optional synchronized karaoke lyrics, with a compact status box while recognition is pending.
+- A separate cover/title/artist box with scrolling Japanese and other long text.
+- Tap the cover for one reusable song window with high-resolution artwork, album details, and optional sourced artist background.
+- Atomic artwork updates prevent the Touch Bar icon-loading crash.
 - Optional microphone button for Voxtype dictation.
 - Original brightness, keyboard backlight, and system-volume controls remain available.
 
-This grew out of a working setup on a **T2 MacBook with a 2170 × 60 Touch Bar**, running Omarchy's Hyprland Lua configuration and `tiny-dfr`. The working prototype was tested by hand; this initial packaged installer is covered by automated tests but has not yet been exercised on a second machine.
+This grew out of a working setup on a **T2 MacBook with a 2170 × 60 Touch Bar**, running Omarchy's Hyprland Lua configuration and `tiny-dfr`. The working prototype was tested by hand; the v1.0.0 packaged installer is covered by automated tests but has not yet been exercised on a second machine.
 
 ## Requirements
 
@@ -119,6 +123,8 @@ Configure and test Voxtype's microphone and transcription model separately. This
 
 | Touch Bar interaction | Result |
 | --- | --- |
+| Tap the cover/title/artist box (karaoke) | Open or focus the song-information window |
+| Tap `•••` / `‹` | Expand / collapse non-music controls |
 | Tap the large media panel | Toggle Radio Atlas open / closed |
 | Swipe right across that panel | Raise Radio Atlas volume |
 | Swipe left across that panel | Lower Radio Atlas volume |
@@ -131,13 +137,13 @@ A swipe must move approximately 25 display pixels before becoming a volume gestu
 
 Playback status refreshes five times per second. The radio panel distinguishes live playback, loading, pause, and stream errors; button updates wait until your touch is released.
 
-Metadata comes from the station through Radio Atlas; stations that omit track information cannot display it here. Text scrolls after a short pause, and short names stay still. “70%” means **radio-player volume**, not system volume.
+Metadata comes from Radio Atlas or, when enabled, audio recognition. Text scrolls after a short pause, and short names stay still. “70%” means **radio-player volume**, not system volume.
 
 ## Customize
 
 The base layout is `/etc/omarchy-touchbar-radio/base.toml`. `tiny-dfr` reads the generated `/etc/tiny-dfr/config.toml`; the renderer rewrites that generated file. Change the base template instead.
 
-The panel is intentionally compact: a 520-pixel SVG, five layout units, large track text and a smaller station label. If changing its size, update both `IconWidth` / `Stretch` in the base and the dimensions/clipping in `src/renderer.py`. Restart the renderer and gesture controller after layout changes, since the gesture controller computes its bounds at startup.
+The standard panel uses a 520-pixel SVG. Karaoke mode uses a 300-pixel cover box and a lyrics box that expands from 300 to 900 pixels. Long title and artist rows keep readable type sizes and scroll after a pause, clipped beside the fixed cover. Gesture hitboxes follow layout changes automatically. Custom dimensions still need matching SVG and layout changes.
 
 ```sh
 sudo systemctl restart touchbar-radio-renderer
@@ -187,3 +193,82 @@ Tests use temporary files and fictional metadata; they do not change your live T
 ## Credits and license
 
 MIT licensed. Built on [tiny-dfr](https://github.com/AsahiLinux/tiny-dfr), [Radio Atlas](https://github.com/AksharP5/omarchy-radio-atlas), [Omarchy](https://omarchy.org), and optional [Voxtype](https://voxtype.io). This is an independent integration, not an official component of those projects.
+
+### Dictation button status
+
+With `--with-dictation`, the Codex terminal mark is steady when Voxtype is idle.
+A red pulsing border and animated bars indicate recording; amber moving dots
+indicate transcription. A gray dash means Voxtype is unavailable. The animation
+reflects Voxtype state, not microphone amplitude. Updates share the radio display
+publisher and pause during touches so taps and swipes remain usable.
+
+
+## Enable karaoke and song details
+
+Karaoke is optional. Prepare a **Python 3.12** virtual environment as your normal
+desktop user, with Python 3.12 available on your PATH:
+
+```sh
+python3.12 -m venv ~/.local/share/omarchy-touchbar-radio/karaoke-venv
+~/.local/share/omarchy-touchbar-radio/karaoke-venv/bin/python -m pip install -r requirements-karaoke.txt
+./install.sh --with-karaoke --with-background
+```
+
+Use `--with-karaoke` alone to omit Wikipedia lookups. The marketplace panel
+provides the same two opt-ins once the environment is ready. A different prepared
+interpreter can be selected with `--karaoke-python /absolute/path/to/venv/bin/python`.
+The installer validates it as the desktop user, never imports user code as root,
+and does not download dependencies. ShazamIO's native extension crashed on this
+machine with Python 3.14; the worker therefore requires the tested Python 3.12.
+`parec`, `pactl`, `pw-dump`, and Chromium must also be installed.
+
+With karaoke enabled, the Touch Bar shows cover art, title and artist, timed
+lyrics, playback and volume controls. Long title and artist rows scroll independently
+using Pango-measured glyph widths, including Japanese text. Tap `•••` to restore
+other controls and `‹` to collapse them. Fn retains the primary layer.
+
+The lyrics box stays compact while searching or when lyrics are unavailable and
+expands when timed lyrics arrive. Confirmed instrumentals hide it. Genres are not
+blacklisted: vocal jazz can still have lyrics. Recognition retries use a small
+emoji animation. Native titles from Shazam's song links are checked alongside
+translated display titles, while artist checks reject unrelated results.
+
+The song window includes high-resolution artwork (up to 640 pixels, depending
+on the source), album, label, release year and genre when supplied by recognition.
+Optional Wikipedia introductions cover the artist, song and album when a named
+article can be corroborated. Ambiguous matches are omitted; source links and
+attribution appear beside the information. The page follows new recognition data.
+Repeated taps focus the same window. A dedicated Chromium profile and named user
+service prevent profile-conflict dialogs and simultaneous launches.
+
+### Network use and timing
+
+The worker captures eight seconds from the uniquely matched Radio Atlas audio
+stream, never a microphone or the unrestricted system mix. ShazamIO derives an
+audio fingerprint for Shazam recognition. Artist and song names go to LRCLIB;
+`--with-background` additionally sends artist, song and album names to Wikipedia.
+Artwork is fetched from the recognized track's image provider. Audio is not saved
+to disk. Covers are cached under the session runtime directory with a 64-file
+limit; lyric and background lookups are cached in memory.
+
+Recognition supplies the song position, while LRCLIB supplies line timestamps.
+The highlight sweep is a visual aid, not word-level alignment. PipeWire's reported
+AirPlay receiver delay is accounted for, but different recordings, source timing
+and receiver delays can still affect synchronization. Metadata arrival and elapsed
+station playback are not used as song position. Network work stays off the display
+and gesture loops. General MPRIS players are not supported yet.
+
+```sh
+systemctl --user status touchbar-radio-karaoke
+journalctl --user -u touchbar-radio-karaoke -n 50
+systemctl --user disable --now touchbar-radio-karaoke  # stop recognition
+systemctl --user enable --now touchbar-radio-karaoke   # enable it again
+```
+
+The renderer remains offline and protected from home directories. Atomic SVG
+replacement requires service write access to the **root-owned `/etc/tiny-dfr`
+directory**, rather than individually mounted output files. The input status
+file remains the only user-writable file consumed by the renderer; the installer
+does not make system configuration writable by the desktop user.
+
+See [v1.0.0 release notes](CHANGELOG.md) and [upgrade/migration notes](docs/MIGRATING.md).

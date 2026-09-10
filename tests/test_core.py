@@ -98,6 +98,28 @@ class RenderTests(unittest.TestCase):
                 self.assertNotEqual((out / 'config.toml').read_text(), before)
                 self.assertEqual((out / 'config.toml').stat().st_ino, inode)
 
+    def test_dictation_idle_is_static_and_active_states_animate(self):
+        self.assertEqual(r.render_dictation('idle', 0), r.render_dictation('idle', .3))
+        for status in ('recording', 'transcribing'):
+            self.assertNotEqual(r.render_dictation(status, 0), r.render_dictation(status, .3))
+        for status in ('idle', 'recording', 'transcribing', 'unavailable', None):
+            ET.fromstring(r.render_dictation(status, .3))
+        self.assertNotEqual(r.render_dictation('idle'), r.render_dictation(None))
+
+    def test_dictation_only_updates_trigger_config_refresh(self):
+        with tempfile.TemporaryDirectory() as folder:
+            out=Path(folder); base=out/'base.toml';base.write_text('MediaLayerKeys=[]')
+            with patch.object(r,'BASE',base),patch.object(r,'OUTPUT',out):
+                svg=r.render({})
+                r.publish(svg,r.render_dictation('idle'))
+                before=(out/'config.toml').read_text()
+                inode=(out/'config.toml').stat().st_ino
+                recording=r.render_dictation('recording', .2)
+                r.publish(svg,recording)
+                self.assertEqual((out/r.DICTATION_ICON).read_text(),recording)
+                self.assertNotEqual((out/'config.toml').read_text(),before)
+                self.assertEqual((out/'config.toml').stat().st_ino,inode)
+
     def test_scroll_preserves_full_text_and_escapes_xml(self):
         state={'running':True,'station':{'name':'Station <&>'},'title':'日本語 <&> '*50}
         first=r.render(state,0);later=r.render(state,5)
@@ -159,7 +181,8 @@ class InstallTests(unittest.TestCase):
         unit=i.unit_text('renderer')
         self.assertIn('ProtectHome=true',unit)
         self.assertIn('IPAddressDeny=any',unit)
-        self.assertIn('ReadWritePaths=/etc/tiny-dfr/config.toml /etc/tiny-dfr/radio-info.svg',unit)
+        self.assertIn('ReadWritePaths=/etc/tiny-dfr\n',unit)
+        self.assertIn('ProtectSystem=strict',unit)
     def test_serializer_round_trips_strings(self):
         value={'Text':'Quote " newline\n backslash \\ 日本語','Action':[],'Stretch':5}
         self.assertEqual(tomllib.loads('key='+i.toml_value(value))['key'],value)

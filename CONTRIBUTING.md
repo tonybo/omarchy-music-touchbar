@@ -4,7 +4,7 @@ Bug reports, hardware validation, and pull requests are welcome.
 
 For a hardware report, include the Mac model, Touch Bar DRM mode, tiny-dfr version, Omarchy version, and whether the issue concerns display updates, taps, swipes, or suspend. Do not include authentication tokens or your full home configuration. Relevant service logs are usually enough.
 
-Run the tests before submitting a change:
+Install PyGObject/Pango and Pillow for the test interpreter, then run the tests before submitting a change:
 
 ```sh
 python3 -m unittest discover -s tests -v

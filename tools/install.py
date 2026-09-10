@@ -72,7 +72,30 @@ def display_width():
     raise ValueError('No Touch Bar DRM display found. Configure tiny-dfr first, or pass --display-width.')
 
 
-def unit_text(role):
+def unit_text(role, karaoke_python=None, background=False):
+    if role == 'karaoke':
+        if not karaoke_python:
+            raise ValueError('Karaoke requires a prepared Python 3.12 environment.')
+        return f'''[Unit]
+Description=Touch Bar song recognition and synchronized lyrics
+PartOf=graphical-session.target
+After=graphical-session.target pipewire-pulse.service
+
+[Service]
+ExecStart="{karaoke_python}" -I {LIB}/karaoke.py
+Environment=TOUCHBAR_WIKIPEDIA={int(background)}
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%t
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=graphical-session.target
+'''
     script={'renderer':'renderer.py','feed':'feed.py','gestures':'gestures.py'}[role]
     if role=='renderer':
         return f'''[Unit]
@@ -86,7 +109,7 @@ Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/etc/tiny-dfr/config.toml /etc/tiny-dfr/radio-info.svg /etc/tiny-dfr/radio-playback.svg
+ReadWritePaths=/etc/tiny-dfr
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true
@@ -120,7 +143,7 @@ WantedBy=graphical-session.target
 '''
 
 
-def plan(account, width, height, dictation):
+def plan(account, width, height, dictation, karaoke_python=None, background=False):
     home=Path(account.pw_dir)
     config=Path('/etc/tiny-dfr/config.toml')
     defaults=tomllib.loads(Path('/usr/share/tiny-dfr/config.toml').read_text())
@@ -141,10 +164,14 @@ def plan(account, width, height, dictation):
     add(config,base,replace=True,dynamic=True)
     add('/etc/tiny-dfr/radio-info.svg','<svg xmlns="http://www.w3.org/2000/svg" width="520" height="48"><text x="12" y="30" fill="white">Radio Atlas</text></svg>',dynamic=True)
     add('/etc/tiny-dfr/radio-playback.svg','<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><path fill="white" d="M15 9v30l24-15z"/></svg>',dynamic=True)
+    add('/etc/tiny-dfr/radio-track.svg','<svg xmlns="http://www.w3.org/2000/svg" width="300" height="48"/>',dynamic=True)
     add(DATA/'status.json','{}\n',user=True,dynamic=True)
     add('/etc/systemd/system/'+UNIT,unit_text('renderer'))
     for role in ('feed','gestures'):
         add(home/f'.config/systemd/user/touchbar-radio-{role}.service',unit_text(role),user=True)
+    if karaoke_python:
+        add(home/'.config/systemd/user/touchbar-radio-karaoke.service',
+            unit_text('karaoke', karaoke_python, background), user=True)
     # Read-only ACLs on exactly the digitizer and its virtual keys; no input-group membership.
     rules='''# Installed by omarchy-touchbar-radio.
 '''
@@ -163,7 +190,7 @@ def plan(account, width, height, dictation):
         hotkey=tomllib.loads(vox.read_text()).get('hotkey',{}) if vox.exists() else {}
         if not (hotkey.get('enabled',False) and hotkey.get('key','').upper()=='F13'):
             binds+='o.bind("XF86Tools", "Touch Bar dictation", "voxtype record toggle")\n'
-        add('/etc/tiny-dfr/touchbar-dictation.svg',(REPO/'assets/dictation.svg').read_bytes())
+        add('/etc/tiny-dfr/touchbar-dictation.svg',(REPO/'assets/dictation.svg').read_bytes(),dynamic=True)
     add(home/'.config/hypr/touchbar-radio.lua',binds,user=True)
     add(main,main.read_text()+f'\n{MARKER}\nrequire("hypr.touchbar-radio")\n',user=True,replace=True)
     return files
@@ -178,6 +205,7 @@ def user_systemctl(account,*args):
 def apply(files,account):
     DATA.mkdir(parents=True,exist_ok=True)
     records={}
+    user_units = USER_UNITS + (['touchbar-radio-karaoke.service'] if any(Path(n).name == 'touchbar-radio-karaoke.service' for n in files) else [])
     # Save all originals before the first mutation, including tiny-dfr and Hyprland.
     for name,item in files.items():
         p=Path(name)
@@ -186,7 +214,7 @@ def apply(files,account):
             st=p.stat()
             previous={'data':base64.b64encode(p.read_bytes()).decode(),'mode':st.st_mode&0o777,'uid':st.st_uid,'gid':st.st_gid}
         records[name]={'previous':previous,'sha256':hashlib.sha256(item['data']).hexdigest(),'dynamic':item['dynamic'],'installed':False}
-    MANIFEST.write_text(json.dumps({'user':account.pw_name,'files':records},indent=2)+'\n')
+    MANIFEST.write_text(json.dumps({'version':'1.0.0','user':account.pw_name,'files':records,'user_units':user_units},indent=2)+'\n')
     MANIFEST.chmod(0o600)
     for name,item in files.items():
         p=Path(name)
@@ -199,7 +227,7 @@ def apply(files,account):
         p.write_bytes(item['data']);p.chmod(0o644)
         os.chown(p,account.pw_uid if item['user'] else 0,account.pw_gid if item['user'] else 0)
         records[name]['installed']=True
-        MANIFEST.write_text(json.dumps({'user':account.pw_name,'files':records},indent=2)+'\n')
+        MANIFEST.write_text(json.dumps({'version':'1.0.0','user':account.pw_name,'files':records,'user_units':user_units},indent=2)+'\n')
     subprocess.run(['udevadm','control','--reload-rules'],check=True)
     for e in Path('/sys/class/input').glob('event*'):
         if (e/'device/name').read_text().strip() in ('Apple Inc. Touch Bar Display Touchpad','Dynamic Function Row Virtual Input Device'):
@@ -208,7 +236,7 @@ def apply(files,account):
     subprocess.run(['systemctl','restart','tiny-dfr.service'],check=True)
     subprocess.run(['systemctl','enable','--now',UNIT],check=True)
     user_systemctl(account,'daemon-reload')
-    user_systemctl(account,'enable','--now',*USER_UNITS)
+    user_systemctl(account,'enable','--now',*user_units)
 
 
 def uninstall():
@@ -219,7 +247,13 @@ def uninstall():
         if p.is_symlink(): raise ValueError(f'Path changed to a symlink: {p}')
         if p.exists() and not item['dynamic'] and hashlib.sha256(p.read_bytes()).hexdigest()!=item['sha256']:
             raise ValueError(f'{p} changed since installation. Back it up and restore the installed version before uninstalling.')
-    user_systemctl(account,'disable','--now',*USER_UNITS)
+    user_systemctl(account,'disable','--now',*saved.get('user_units', USER_UNITS))
+    # Stop the dedicated popup only when it is running.
+    runtime = f'/run/user/{account.pw_uid}'
+    if Path(runtime + '/bus').exists():
+        subprocess.run(['runuser','-u',account.pw_name,'--','env',f'XDG_RUNTIME_DIR={runtime}',
+                        f'DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus',
+                        'systemctl','--user','stop','touchbar-song-window.service'], check=False)
     subprocess.run(['systemctl','disable','--now',UNIT],check=True)
     for name,item in reversed(list(saved['files'].items())):
         if not item.get('installed',True): continue
@@ -243,6 +277,9 @@ def main():
     parser.add_argument('--user',default=os.environ.get('SUDO_USER',os.environ.get('USER')))
     parser.add_argument('--display-width',type=int)
     parser.add_argument('--with-dictation',action='store_true')
+    parser.add_argument('--with-karaoke',action='store_true', help='Enable Shazam audio recognition and LRCLIB lyrics')
+    parser.add_argument('--with-background',action='store_true', help='Also look up artist/song/album names on Wikipedia')
+    parser.add_argument('--karaoke-python', help='Path to a prepared Python 3.12 virtual environment interpreter')
     parser.add_argument('--dry-run',action='store_true')
     parser.add_argument('--uninstall',action='store_true')
     args=parser.parse_args()
@@ -250,7 +287,7 @@ def main():
     if args.uninstall:
         if args.dry_run: parser.error('--dry-run is for installation only')
         uninstall();print('Uninstalled; run hyprctl reload in your desktop session.');return
-    if MANIFEST.exists(): parser.error('Already installed. Uninstall before reinstalling this initial version.')
+    if MANIFEST.exists(): parser.error('Already installed. Uninstall before installing v1.0.0; see docs/MIGRATING.md.')
     if not args.user or not re.fullmatch(r'[a-z_][a-z0-9_-]*',args.user): parser.error('Pass a regular Linux username with --user.')
     account=pwd.getpwnam(args.user)
     if account.pw_uid==0: parser.error('The desktop user must not be root.')
@@ -259,7 +296,23 @@ def main():
     subprocess.run(['/usr/bin/python3','-I','-c','import gi; gi.require_version("Pango", "1.0"); gi.require_version("PangoCairo", "1.0"); from gi.repository import Pango, PangoCairo'],check=True)
     width,height=(args.display_width,60) if args.display_width else display_width()
     if not 1000<=width<=3000: parser.error('Unsupported display width.')
-    files=plan(account,width,height,args.with_dictation)
+    karaoke_python = None
+    if args.with_background and not args.with_karaoke:
+        parser.error('--with-background requires --with-karaoke')
+    if args.with_karaoke:
+        karaoke_python = args.karaoke_python or str(Path(account.pw_dir)/'.local/share/omarchy-touchbar-radio/karaoke-venv/bin/python')
+        if not Path(karaoke_python).is_absolute() or any(c in karaoke_python for c in '\n\r\"%\\'):
+            parser.error('Use an absolute interpreter path without quotes, percent signs, or backslashes.')
+        if not Path(karaoke_python).is_file():
+            parser.error('Prepare the Python 3.12 karaoke environment first; see README.md.')
+        for command in ('parec', 'pactl', 'pw-dump', 'chromium'):
+            if not shutil.which(command): parser.error(f'Missing karaoke dependency: {command}')
+        check = [karaoke_python, '-I', '-c', 'import sys; assert sys.version_info[:2] == (3,12), \"Use Python 3.12\"; import shazamio, PIL']
+        # Never import a user-owned virtual environment as root.
+        if os.geteuid() == 0:
+            check = ['runuser', '-u', account.pw_name, '--', *check]
+        subprocess.run(check, check=True)
+    files=plan(account,width,height,args.with_dictation,karaoke_python,args.with_background)
     if args.dry_run:
         print('\n'.join(files));return
     apply(files,account)

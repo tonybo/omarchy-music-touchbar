@@ -1,0 +1,3 @@
+shazamio==0.8.1
+Pillow==12.3.0
+audioop-lts==0.2.2; python_version >= '3.13'

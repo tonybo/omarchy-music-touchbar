@@ -5,6 +5,7 @@ import subprocess
 import sys
 keys={'XF86Launch6','XF86Launch7','XF86Launch8'}
 if '--with-dictation' in sys.argv: keys.add('XF86Tools')
+if '--with-karaoke' in sys.argv: keys.update({'XF86Launch9', 'XF86LaunchA'})
 binds=json.loads(subprocess.check_output(['hyprctl','binds','-j'],text=True))
 conflicts=[b for b in binds if b.get('key') in keys and b.get('modmask')==0]
 if conflicts:

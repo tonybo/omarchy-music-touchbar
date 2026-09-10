@@ -2,10 +2,14 @@
   "schemaVersion": 1,
   "id": "tonybo.touchbar-radio",
   "name": "Touch Bar Radio",
-  "version": "0.2.2",
+  "version": "1.0.0",
   "author": "tonybo",
   "license": "MIT",
-  "description": "Radio Atlas controls for T2 MacBook Touch Bars, with hardware setup and service status.",
-  "kinds": ["overlay"],
-  "entryPoints": {"overlay": "Plugin.qml"}
+  "description": "T2 Touch Bar radio controls with synchronized lyrics, album artwork, song details, and hardware setup.",
+  "kinds": [
+    "overlay"
+  ],
+  "entryPoints": {
+    "overlay": "Plugin.qml"
+  }
 }

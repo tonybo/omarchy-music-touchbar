@@ -7,8 +7,10 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run(action, dictation=False):
+def run(action, dictation=False, karaoke=False, background=False):
     flags = ['--with-dictation'] if dictation else []
+    if karaoke: flags.append('--with-karaoke')
+    if background: flags.append('--with-background')
     if action == 'preview':
         return subprocess.run(['python3', str(ROOT / 'tools/install.py'), '--dry-run', *flags]).returncode
     if action == 'install':
@@ -29,9 +31,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['preview', 'install', 'uninstall'])
     parser.add_argument('--with-dictation', action='store_true')
+    parser.add_argument('--with-karaoke', action='store_true')
+    parser.add_argument('--with-background', action='store_true')
     args = parser.parse_args()
     try:
-        result = run(args.action, args.with_dictation)
+        result = run(args.action, args.with_dictation, args.with_karaoke, args.with_background)
         print(f'\nFinished (exit status {result}).')
         input('Press Enter to close. ')
         return result

@@ -8,7 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install rendering dependencies
-        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-pango-1.0
+        run: sudo apt-get update && sudo apt-get install -y python3-gi python3-pil gir1.2-pango-1.0 fonts-noto-cjk
       - name: Compile Python
         run: /usr/bin/python3 -m compileall -q src tools
       - name: Run tests

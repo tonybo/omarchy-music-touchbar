@@ -1,15 +1,19 @@
 #!/usr/bin/python3
 """Handle the radio panel directly so display animation cannot interrupt gestures."""
+import base64
+import html
 import fcntl
 import json
 import logging
 import os
+import re
 from pathlib import Path
 import select
 import struct
 import subprocess
 import time
 import tomllib
+import urllib.parse
 
 EVENT=struct.Struct('llHHi')
 RAW='Apple Inc. Touch Bar Display Touchpad'
@@ -56,7 +60,7 @@ def current_volume():
     except (OSError,ValueError,TypeError): return 70
 
 def panel_bounds(width=2170):
-    keys=tomllib.loads(Path('/etc/omarchy-touchbar-radio/base.toml').read_text())['MediaLayerKeys']
+    keys=tomllib.loads(Path('/etc/tiny-dfr/config.toml').read_text())['MediaLayerKeys']
     total=int(width >= 2170)+sum(k.get('Stretch',1) for k in keys)
     unit=(width-16*(total-1))/total
     start=int(width >= 2170)
@@ -65,7 +69,7 @@ def panel_bounds(width=2170):
         if key.get('Icon')=='radio-info':
             return start*(unit+16),start*(unit+16)+unit+(span-1)*(unit+16)
         start+=span
-    raise ValueError('Radio panel is absent')
+    return -1, -1  # No lyrics panel: do not leave a stale touch target.
 
 def feedback(active,volume):
     payload={'active':active,'volume':volume,'expires':time.monotonic()+1.1}
@@ -84,6 +88,161 @@ class VolumeOutput:
             self.sent=self.pending
 
 
+def source_link(url, label):
+    parsed = urllib.parse.urlsplit(str(url))
+    host = (parsed.hostname or '').lower()
+    if parsed.scheme != 'https' or not (host == 'shazam.com' or host.endswith('.shazam.com')
+                                      or host == 'en.wikipedia.org'):
+        return ''
+    return '<a target="_blank" rel="noopener noreferrer" href="' + html.escape(url, quote=True) + '">' + html.escape(label) + '</a>'
+
+
+def song_details_html(details):
+    if not isinstance(details, dict):
+        details = {}
+    facts = details.get('facts') or {}
+    rows = ''.join('<dt>' + html.escape(str(label)) + '</dt><dd>' + html.escape(str(value)) + '</dd>'
+                   for label, value in facts.items() if value)
+    body = '<section><h2>Song &amp; album</h2>'
+    body += '<dl>' + rows + '</dl>' if rows else '<p class="muted">Album and release details are not available yet.</p>'
+    body += source_link(details.get('source', ''), 'Song details on Shazam') + '</section>'
+    for item in details.get('background', []):
+        body += ('<section><h2>' + html.escape(str(item.get('heading', 'Background'))) + '</h2><p>'
+                 + html.escape(str(item.get('text', ''))) + '</p><small>'
+                 + source_link(item.get('url', ''), str(item.get('source', 'Wikipedia')))
+                 + '</small></section>')
+    if not details.get('background'):
+        body += '<section><h2>Artist &amp; background</h2><p class="muted">No verified background information is available for this song yet.</p></section>'
+    return body
+
+
+def song_card(state, karaoke):
+    """Build a local, inert song page using only current, corroborated data."""
+    station = state.get('station') or {}
+    expected = [station.get('uuid', station.get('name', '')), state.get('title', '')]
+    stamp = karaoke.get('updated_at', 0)
+    if karaoke.get('key') != expected or not isinstance(stamp, (int, float)) or not 0 <= time.monotonic() - stamp < 3:
+        karaoke = {}
+    title = str(state.get('title') or 'Unknown song')
+    artist = ''
+    if ' - ' in title:
+        artist, title = title.split(' - ', 1)
+    title = str(karaoke.get('title') or title)
+    artist = str(karaoke.get('artist') or artist)
+    cover = karaoke.get('cover', '')
+    artwork = '<div class="placeholder">♫</div>'
+    if isinstance(cover, str) and len(cover) < 14000:
+        try:
+            raw = base64.b64decode(cover, validate=True)
+            if raw[:8] == b'\x89PNG\r\n\x1a\n' and struct.unpack('>II', raw[16:24]) == (48, 48):
+                artwork = '<img alt="Song cover" src="data:image/png;base64,' + cover + '">'
+        except (ValueError, struct.error):
+            pass
+    cover_file = (karaoke.get('details') or {}).get('cover_file', '')
+    if isinstance(cover_file, str) and re.fullmatch(r'touchbar-cover-[0-9a-f]{64}\.jpg', cover_file):
+        try:
+            with (Path(os.environ['XDG_RUNTIME_DIR']) / cover_file).open('rb') as source:
+                full_cover = source.read(2_000_001)
+            if len(full_cover) <= 2_000_000 and full_cover.startswith(b'\xff\xd8'):
+                artwork = '<img alt="Album cover" src="data:image/jpeg;base64,' + base64.b64encode(full_cover).decode() + '">'
+        except OSError:
+            pass
+    lines = karaoke.get('lyrics') or []
+    lyrics = '\n'.join(str(line)[:200] for line in lines[:120])
+    body = '<h2>Lyrics</h2><pre>' + html.escape(lyrics) + '</pre>' if lyrics else '<p class="muted">Timed lyrics are not available for this song.</p>'
+    body = song_details_html(karaoke.get('details')) + body
+    return ('<!doctype html><html><head><meta charset="utf-8">'
+            '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'">'
+            '<meta http-equiv="refresh" content="3">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<title>Now playing · ' + html.escape(title) + '</title><style>'
+            'body{margin:0;background:#101b27;color:#eef6ff;font:16px system-ui,sans-serif}'
+            'main{max-width:560px;margin:auto;padding:40px 32px}img,.placeholder{width:280px;height:280px;max-width:100%;border-radius:20px;object-fit:contain}'
+            '.placeholder{background:#234039;color:#9cebd4;display:grid;place-items:center;font-size:72px}'
+            'h1{font-size:28px;margin-bottom:8px;overflow-wrap:anywhere}h2{font-size:18px;margin-top:36px}'
+            '.artist{font-size:20px;color:#9cebd4}.muted{color:#afc5d8;line-height:1.6}'
+            'section{margin-top:28px;padding-top:4px;border-top:1px solid #29404f}p{line-height:1.65}'
+            'dl{display:grid;grid-template-columns:100px 1fr;gap:12px}dt{color:#afc5d8}dd{margin:0;overflow-wrap:anywhere}'
+            'a{color:#9cebd4;text-underline-offset:3px}small{color:#afc5d8}'
+            'pre{white-space:pre-wrap;font:18px/1.9 system-ui,sans-serif}</style></head><body><main>'
+            + artwork + '<h1>' + html.escape(title) + '</h1><div class="artist">'
+            + html.escape(artist) + '</div><p class="muted">'
+            + html.escape(str(station.get('name') or 'Radio')) + '</p>' + body + '</main></body></html>')
+
+
+SONG_WINDOW_MARKER = 'touchbar-song-info'
+SONG_WINDOW_UNIT = 'touchbar-song-window.service'
+_song_launch_at = -100.0
+
+
+def song_windows():
+    result = subprocess.run(['hyprctl', 'clients', '-j'], capture_output=True,
+                            text=True, check=True, timeout=2)
+    return [w for w in json.loads(result.stdout)
+            if SONG_WINDOW_MARKER in w.get('class', '')]
+
+
+def refresh_song_page():
+    path = Path(os.environ['XDG_RUNTIME_DIR']) / 'touchbar-karaoke.json'
+    page = path.with_name('touchbar-song-info.html')
+    if not page.exists():
+        return
+    try:
+        content = song_card(json.loads(STATUS.read_text()), json.loads(path.read_text()))
+        if page.read_text() != content:
+            temp = page.with_suffix('.tmp')
+            temp.write_text(content)
+            temp.chmod(0o600)
+            temp.replace(page)
+    except (OSError, ValueError, TypeError):
+        logging.exception('Could not refresh song information')
+
+
+def open_song_info():
+    global _song_launch_at
+    try:
+        state = json.loads(STATUS.read_text())
+        path = Path(os.environ['XDG_RUNTIME_DIR']) / 'touchbar-karaoke.json'
+        try:
+            karaoke = json.loads(path.read_text())
+        except (OSError, ValueError):
+            karaoke = {}
+        page = path.with_name('touchbar-song-info.html')
+        temp = page.with_suffix('.tmp')
+        temp.write_text(song_card(state, karaoke))
+        temp.chmod(0o600)
+        temp.replace(page)
+        windows = song_windows()
+        if windows:
+            subprocess.run(['hyprctl', 'eval',
+                            'hl.dispatch(hl.dsp.focus({window=' +
+                            json.dumps('address:' + windows[0]['address']) + '}))'],
+                           stdout=subprocess.DEVNULL, check=True, timeout=2)
+            return
+        # Chromium hands off to an existing browser process; its launcher PID
+        # cannot tell us whether the app window is still open.
+        if time.monotonic() - _song_launch_at < 10:
+            return
+        # Launch outside the gesture service's PrivateTmp namespace and use
+        # a dedicated profile. Reusing the main browser's profile from a
+        # different /tmp namespace breaks Chromium's singleton socket.
+        profile = path.parent / 'touchbar-song-browser'
+        profile.mkdir(mode=0o700, exist_ok=True)
+        subprocess.run(['systemd-run', '--user', '--collect',
+                        '--unit=' + SONG_WINDOW_UNIT, '--property=ExitType=cgroup',
+                        '--description=Touch Bar song information',
+                        '/usr/bin/chromium', '--user-data-dir=' + str(profile),
+                        '--no-first-run', '--no-default-browser-check',
+                        '--disable-extensions', '--app=' + page.as_uri(),
+                        '--window-size=560,740'],
+                       stdout=subprocess.DEVNULL, check=True, timeout=3)
+        # The fixed unit name also prevents concurrent starts and duplicate
+        # launches across gesture-service restarts while the window opens.
+        _song_launch_at = time.monotonic()
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        logging.exception('Could not open song information')
+
+
 def main():
     devices={}; next_scan=0; slot=0; slots={}; gesture=None; pending_arm=0
     scale_x=2170/32767; scale_y=60/127
@@ -93,9 +252,19 @@ def main():
     left,right=panel_bounds(width)
     output=VolumeOutput()
     blocked_at=0
+    last_song_open=-10
     last_feedback=0
+    next_bounds=0
+    next_song_page=0
     while True:
         now=time.monotonic()
+        if now >= next_song_page:
+            next_song_page = now + 3
+            refresh_song_page()
+        if gesture is None and now >= next_bounds:
+            next_bounds = now + .3
+            try: left,right=panel_bounds(width)
+            except (OSError, ValueError): pass
         if len(devices)<2 and now>=next_scan:
             next_scan=now+1
             for e in Path('/sys/class/input').glob('event*'):
@@ -131,6 +300,16 @@ def main():
             for _,_,kind,code,value in EVENT.iter_unpack(raw):
                 now=time.monotonic()
                 if devices[fd]==VIRTUAL:
+                    if kind==1 and code==189 and value==1 and now-last_song_open>1: # F19
+                        last_song_open=now
+                        open_song_info()
+                    if kind==1 and code==188 and value==1: # F18: expand/collapse controls
+                        ui=Path(os.environ['XDG_RUNTIME_DIR'])/'touchbar-karaoke-ui.json'
+                        try: expanded=json.loads(ui.read_text()).get('expanded') is True
+                        except (OSError,ValueError,AttributeError): expanded=False
+                        temp=ui.with_suffix('.tmp')
+                        temp.write_text(json.dumps({'expanded':not expanded}))
+                        temp.replace(ui)
                     if kind==1 and value==1 and code!=184:
                         blocked_at=now
                         if gesture: gesture.cancelled=True
