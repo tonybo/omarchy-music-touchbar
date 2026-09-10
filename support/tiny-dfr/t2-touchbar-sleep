@@ -1,0 +1,28 @@
+#!/bin/bash
+set -euo pipefail
+state=/run/t2-touchbar-sleep
+case "${1:-}" in
+  pre)
+    # Leave an intentionally stopped/masked daemon alone.
+    systemctl is-active --quiet tiny-dfr.service || exit 0
+    case "$(systemctl is-enabled tiny-dfr.service 2>/dev/null || true)" in
+      masked*) exit 0 ;;
+    esac
+    install -d -m 0700 "$state"
+    touch "$state/restore"
+    # Block udev from starting the daemon while devices are being recreated.
+    systemctl mask --runtime --now tiny-dfr.service
+    echo 'Touch Bar daemon stopped and temporarily masked before sleep.'
+    ;;
+  post)
+    [[ -f "$state/restore" ]] || exit 0
+    systemctl unmask --runtime tiny-dfr.service
+    rm -f "$state/restore"
+    # These are udev SYSTEMD_ALIAS units, not literal /dev symlinks.
+    # Start asynchronously: systemd orders tiny-dfr after the returned devices.
+    systemctl reset-failed tiny-dfr.service
+    systemctl start --no-block tiny-dfr.service
+    echo 'Touch Bar daemon restoration queued after display/backlight readiness.'
+    ;;
+  *) echo 'Usage: t2-touchbar-sleep pre|post' >&2; exit 2 ;;
+esac

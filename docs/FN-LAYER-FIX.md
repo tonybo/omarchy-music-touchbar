@@ -16,9 +16,11 @@ unchanged. No broader keyboard access or extra input permissions are needed.
 ## Build
 
 The helper pins the source to `eb711c87fcbddda67be3fd5ff45385b139e8fb34`, matching
-the affected Arch T2 package `v0.3.7.r9.geb711c8-1`. It applies only
+the affected Arch T2 package `v0.3.7.r9.geb711c8-1`. It applies
 [`tiny-dfr-preserve-fn-layer.patch`](../patches/tiny-dfr-preserve-fn-layer.patch)
-and builds with the upstream Cargo lockfile.
+and [`tiny-dfr-handle-device-loss.patch`](../patches/tiny-dfr-handle-device-loss.patch),
+then builds with the upstream Cargo lockfile. Version 0.2.2 adds clean device-loss
+handling; see [wake recovery](WAKE-RECOVERY.md) for the separate sleep service.
 
 On Omarchy/Arch, install missing build dependencies:
 

@@ -47,3 +47,11 @@ Writing only a new SVG is insufficient: tiny-dfr also needs a config notificatio
 - Geometry changes require a gesture-service restart.
 - Installation supports one desktop user per machine.
 - Generated config is managed by this project; customizations belong in the base template.
+
+## Suspend and device loss
+
+The optional [wake recovery integration](WAKE-RECOVERY.md) stops and temporarily
+masks tiny-dfr before sleep, then queues its restoration after wake. The patched
+daemon handles failed framebuffer access without drawing through a stale
+handle or panicking in cleanup. These changes are separate from the shell
+plugin and hardware renderer installation.

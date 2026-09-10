@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the tested tiny-dfr Fn fix. Does not install packages or system files.
+# Build the tested tiny-dfr Fn and device-loss fixes. Does not install packages or system files.
 set -euo pipefail
 if [[ ${1:-} == --help || ${1:-} == -h ]]; then
   echo "Usage: $0 [new-build-directory]"
@@ -27,6 +27,8 @@ git clone --no-checkout https://github.com/AsahiLinux/tiny-dfr.git "$build_dir/s
 git -C "$build_dir/source" checkout --detach "$revision"
 git -C "$build_dir/source" apply --check "$project_dir/patches/tiny-dfr-preserve-fn-layer.patch"
 git -C "$build_dir/source" apply "$project_dir/patches/tiny-dfr-preserve-fn-layer.patch"
+git -C "$build_dir/source" apply --check "$project_dir/patches/tiny-dfr-handle-device-loss.patch"
+git -C "$build_dir/source" apply "$project_dir/patches/tiny-dfr-handle-device-loss.patch"
 (cd -- "$build_dir/source" && cargo build --release --locked)
 target_dir=${CARGO_TARGET_DIR:-target}
 [[ $target_dir == /* ]] || target_dir="$build_dir/source/$target_dir"

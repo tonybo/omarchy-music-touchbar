@@ -35,6 +35,8 @@ The digitizer device name currently supported is `Apple Inc. Touch Bar Display T
 If holding **Fn** makes the Touch Bar flash or return to the media row, see the
 [tested tiny-dfr Fn-layer fix](docs/FN-LAYER-FIX.md). It preserves layer selection
 during live artwork updates and is installed separately from this plugin.
+For a Touch Bar that crashes or stays blank after wake, use the
+[suspend/resume recovery guide](docs/WAKE-RECOVERY.md).
 
 ## Install the Omarchy plugin
 

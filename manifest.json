@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "tonybo.touchbar-radio",
   "name": "Touch Bar Radio",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "author": "tonybo",
   "license": "MIT",
   "description": "Radio Atlas controls for T2 MacBook Touch Bars, with hardware setup and service status.",

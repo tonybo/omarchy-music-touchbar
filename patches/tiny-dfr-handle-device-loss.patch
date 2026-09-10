@@ -1,0 +1,97 @@
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -23,7 +23,6 @@
+     errno::Errno,
+     sys::{
+         epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags},
+-        signal::{SigSet, Signal},
+     },
+ };
+ use privdrop::PrivDrop;
+@@ -814,35 +813,32 @@
+     );
+ }
+ 
+-fn main() {
+-    let mut drm = DrmBackend::open_card().unwrap();
++fn main() -> std::process::ExitCode {
++    let mut drm = match DrmBackend::open_card() {
++        Ok(drm) => drm,
++        Err(error) => {
++            eprintln!("Cannot open Touch Bar display: {error:#}");
++            return std::process::ExitCode::FAILURE;
++        }
++    };
++    // A removed display cannot show a crash bitmap. Let the service manager
++    // reopen the replacement device instead of panicking again on the old fd.
++    match panic::catch_unwind(AssertUnwindSafe(|| real_main(&mut drm))) {
++        Ok(Ok(())) => std::process::ExitCode::SUCCESS,
++        Ok(Err(error)) => {
++            eprintln!("Touch Bar display unavailable: {error:#}");
++            std::process::ExitCode::FAILURE
++        }
++        Err(_) => {
++            eprintln!("Touch Bar daemon panicked; exiting for service recovery");
++            std::process::ExitCode::FAILURE
++        }
++    }
++}
++
++fn real_main(drm: &mut DrmBackend) -> Result<()> {
+     let (height, width) = drm.mode().size();
+-    let _ = panic::catch_unwind(AssertUnwindSafe(|| real_main(&mut drm)));
+-    let crash_bitmap = include_bytes!("crash_bitmap.raw");
+-    let mut map = drm.map().unwrap();
+-    let data = map.as_mut();
+-    let mut wptr = 0;
+-    for byte in crash_bitmap {
+-        for i in 0..8 {
+-            let bit = ((byte >> i) & 0x1) == 0;
+-            let color = if bit { 0xFF } else { 0x0 };
+-            data[wptr] = color;
+-            data[wptr + 1] = color;
+-            data[wptr + 2] = color;
+-            data[wptr + 3] = color;
+-            wptr += 4;
+-        }
+-    }
+-    drop(map);
+-    drm.dirty(&[ClipRect::new(0, 0, height, width)]).unwrap();
+-    let mut sigset = SigSet::empty();
+-    sigset.add(Signal::SIGTERM);
+-    sigset.wait().unwrap();
+-}
+-
+-fn real_main(drm: &mut DrmBackend) {
+-    let (height, width) = drm.mode().size();
+-    let (db_width, db_height) = drm.fb_info().unwrap().size();
++    let (db_width, db_height) = drm.fb_info()?.size();
+     let mut uinput = UInputHandle::new(OpenOptions::new().write(true).open("/dev/uinput").unwrap());
+     let mut backlight = BacklightManager::new();
+     let mut cfg_mgr = ConfigManager::new();
+@@ -970,8 +966,8 @@
+                 needs_complete_redraw,
+             );
+             let data = surface.data().unwrap();
+-            drm.map().unwrap().as_mut()[..data.len()].copy_from_slice(&data);
+-            drm.dirty(&clips).unwrap();
++            drm.map()?.as_mut()[..data.len()].copy_from_slice(&data);
++            drm.dirty(&clips)?;
+             needs_complete_redraw = false;
+         }
+ 
+--- a/src/display.rs
++++ b/src/display.rs
+@@ -44,8 +44,10 @@
+ 
+ impl Drop for DrmBackend {
+     fn drop(&mut self) {
+-        self.card.destroy_framebuffer(self.fb).unwrap();
+-        self.card.destroy_dumb_buffer(self.db).unwrap();
++        // Disconnect/suspend can invalidate both handles. Cleanup must never
++        // panic, especially while unwinding another display error.
++        let _ = self.card.destroy_framebuffer(self.fb);
++        let _ = self.card.destroy_dumb_buffer(self.db);
+     }
+ }
+ 

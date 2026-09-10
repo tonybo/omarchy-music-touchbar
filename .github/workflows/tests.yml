@@ -17,3 +17,4 @@ jobs:
         run: |
           bash -n install.sh
           bash -n tools/build_tiny_dfr_fn_fix.sh
+          bash -n support/tiny-dfr/t2-touchbar-sleep

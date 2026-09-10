@@ -1,0 +1,17 @@
+[Unit]
+Description=Stop T2 Touch Bar before sleep and restore after wake
+Before=sleep.target
+StopWhenUnneeded=yes
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+RuntimeDirectory=t2-touchbar-sleep
+RuntimeDirectoryMode=0700
+ExecStart=/usr/local/sbin/t2-touchbar-sleep pre
+ExecStopPost=/usr/local/sbin/t2-touchbar-sleep post
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+[Install]
+RequiredBy=sleep.target
