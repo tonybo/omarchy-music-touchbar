@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="assets/touchbar-radio-icon.png" alt="Touch Bar Radio icon: a mint waveform and play button in dark glass" width="144" height="144">
+</p>
+
+<p align="center">
   <img src="assets/readme-hero.svg" alt="Touch Bar Radio. A little bar. A whole world of music." width="100%">
 </p>
 
