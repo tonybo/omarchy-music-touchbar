@@ -69,3 +69,31 @@ class NetEaseTests(unittest.TestCase):
         for target in ('https://example.com/', 'http://music.163.com/', 'https://music.163.com:8443/'):
             with self.assertRaises(ValueError):
                 handler.redirect_request(None,None,302,'',{},target)
+
+    def test_traditional_catalogue_finds_simplified_netease_lyrics(self):
+        queries = []
+        def api(endpoint, params):
+            if endpoint == 'search/pc':
+                queries.append(params['s'])
+                songs = [{'id': 123, 'name': '第一个明天', 'duration': 249853,
+                          'artists': [{'name': '陈势安'}], 'album': {'name': '唯一想了解的人'}}]
+                return {'code': 200, 'result': {'songs': songs if params['s'] == '陈势安 第一个明天' else []}}
+            return {'code': 200, 'lrc': {'lyric': '[00:01]fixture'}}
+        with patch.object(k, 'fetch', return_value=b'[]'), patch.object(k, 'netease_json', side_effect=api):
+            result = k.find_lyrics('Andrew Tan', 'First Dawn', aliases=('第一個明天',),
+                                  artist_aliases=('陳勢安',), expected_duration=249.854,
+                                  search_pairs=(('陳勢安', '第一個明天'),))
+            self.assertEqual(result[0], [(1, 'fixture')])
+            self.assertEqual(result.source, 'NetEase')
+            self.assertIn('陈势安 第一个明天', queries)
+            self.assertEqual(k.find_lyrics('Andrew Tan', 'First Dawn', aliases=('第一個明天',),
+                             artist_aliases=('陳勢安',), expected_duration=280,
+                             search_pairs=(('陳勢安', '第一個明天'),))[0], [])
+
+    def test_script_conversion_preserves_kana_and_handles_missing_tool(self):
+        self.assertEqual(k.CATALOG['simplified']('君が好き'), '君が好き')
+        convert = k.CATALOG['simplified']
+        convert.cache_clear()
+        with patch.object(k.subprocess, 'run', side_effect=FileNotFoundError):
+            self.assertEqual(convert('陳勢安'), '陳勢安')
+        convert.cache_clear()

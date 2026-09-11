@@ -121,13 +121,19 @@ shared artist/title/duration checks. See [NetEase setup](NETEASE.md) for the ful
 login and local-session import process. Anonymous requests may be restricted;
 that is an access error, not evidence that a song has no lyrics.
 
+When a catalogue-verified duet has no synchronized result, LRCLIB also searches
+its individual members (at most eight searches). A member-only credit requires
+the matching title, known album, and recording duration within three seconds.
+NetEase requests `lv=-1` to retrieve the lyrics regardless of their version;
+`lv=1` can return an empty body for lyrics whose current version is 1.
+
 Title matching handles explicit bilingual names, remaster labels, and soundtrack
 annotations. Live/remix/acoustic identities and recording-duration checks remain.
 Recognizable stale ad campaign identifiers no longer veto an audio fingerprint.
 Empty search results expire after two minutes; failed requests are retried.
 
 The panel distinguishes “Song identified · lyrics lookup retrying…” from
-“Song identified · lyrics not in catalogue”. Plain lyrics appear in the song-info
+“No matching synced lyrics found”. Plain lyrics appear in the song-info
 card with “Lyrics found · tap song info”; no timing is invented for plain text.
 A successful LRCLIB result means NetEase is not queried, even if some alternate
 LRCLIB search requests failed.
@@ -145,3 +151,11 @@ titles remain rejected. The fragment is not passed to lyric search as an alias.
 If recognition lacks an Apple Music ID, a bounded catalogue search can recover
 it only from a unique exact artist/title result. Regional names are then checked
 against that recording ID as usual. LRCLIB remains first, NetEase second.
+
+Traditional Chinese artist and title aliases also generate simplified Chinese
+search queries through ICU `uconv` (`Traditional-Simplified`). Both script forms
+are accepted when checking provider results, including NetEase fallback, while
+artist, title, and recording-duration checks remain required. For example,
+陳勢安 / 第一個明天 can match 陈势安 / 第一个明天. Original display names are
+preserved. Labels containing Japanese kana are left unchanged. Conversion is
+local and cached in memory; if ICU is unavailable, original-name lookup continues.

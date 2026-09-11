@@ -42,7 +42,7 @@ class MatchingRecoveryTests(unittest.TestCase):
 
     def test_service_error_is_not_reported_as_absent_lyrics(self):
         self.assertIn('retrying', k.lyrics_status({'lyrics_error': True}))
-        self.assertIn('not in catalogue', k.lyrics_status({}))
+        self.assertEqual('No matching synced lyrics found', k.lyrics_status({}))
         self.assertIn('tap song info', k.lyrics_status({'lyrics': ['fixture']}))
 
     def test_soundtrack_annotation_and_explicit_bilingual_title(self):

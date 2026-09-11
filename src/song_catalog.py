@@ -24,6 +24,23 @@ def normalize(value):
     return ''.join(c for c in text if c.isalnum())
 
 
+@lru_cache(maxsize=256)
+def simplified(value):
+    """Convert Chinese script locally; preserve kana-bearing Japanese labels."""
+    if len(value) > 300 or not re.search(r'[\u3400-\u9fff]', value) or re.search(r'[\u3040-\u30ff]', value):
+        return value
+    try:
+        result = subprocess.run(['uconv', '-x', 'Traditional-Simplified'], input=value,
+                                text=True, capture_output=True, timeout=1, check=True)
+        return result.stdout.strip() or value
+    except (OSError, subprocess.SubprocessError):
+        return value
+
+
+def script_forms(value):
+    return tuple(dict.fromkeys((value, simplified(value))))
+
+
 def mixed_names(value):
     """Split explicit native/Latin artist labels, but not collaborations."""
     value = str(value).strip()

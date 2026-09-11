@@ -307,7 +307,9 @@ def netease_candidates(pairs):
 
 
 def netease_lyrics(row):
-    data = netease_json('song/lyric', {'id': row['id'], 'lv': 1})
+    # Request the lyrics regardless of version; lv=1 can return an empty
+    # body when the provider's current lyric version is already 1.
+    data = netease_json('song/lyric', {'id': row['id'], 'lv': -1})
     text = (data.get('lrc') or {}).get('lyric') or ''
     if not isinstance(text, str) or len(text) > 100000:
         raise ValueError('Invalid NetEase lyrics response')
@@ -323,13 +325,17 @@ def netease_lyrics(row):
 def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
                 album_aliases=(), expected_duration=0, search_pairs=()):
     artists = tuple(dict.fromkeys(v for a in (artist, *artist_aliases)
-                                 for mixed in CATALOG['mixed_names'](a) for v in name_variants(mixed)))[:12]
-    titles = tuple(dict.fromkeys(v for t in (title, *aliases) for v in title_variants(t)))[:8]
+                                 for mixed in CATALOG['mixed_names'](a) for name in name_variants(mixed)
+                                 for v in CATALOG['script_forms'](name)))[:12]
+    titles = tuple(dict.fromkeys(v for t in (title, *aliases) for name in title_variants(t)
+                                 for v in CATALOG['script_forms'](name)))[:8]
     rows = []
     failures = 0
     pairs = tuple(dict.fromkeys(((artist, title),
                                 *((a, t) for a, label in search_pairs for t in title_variants(label)),
                                 *((a, t) for a in artists for t in titles))))[:12]
+    pairs = tuple(dict.fromkeys(form for a, t in pairs
+                  for form in ((a, t), (CATALOG['simplified'](a), CATALOG['simplified'](t)))))[:12]
     def search(pair):
         alternate_artist, alternate_title = pair
         query = urllib.parse.urlencode({'artist_name': alternate_artist, 'track_name': alternate_title})
@@ -357,7 +363,8 @@ def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
     def artist_matches(value):
         def primary_matches(name):
             return any(normalize(v) == normalize(a) or artist_key(v) == artist_key(a)
-                       for mixed in CATALOG['mixed_names'](name) for v in name_variants(mixed) for a in artists)
+                       for mixed in CATALOG['mixed_names'](name) for label in name_variants(mixed)
+                       for v in CATALOG['script_forms'](label) for a in artists)
         if primary_matches(value):
             return True
         # A credited guest may be stored in artistName instead of trackName.
@@ -365,10 +372,31 @@ def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
         credits = re.split(r'\s*(?:,|&|、|\bfeat\.?\s|\bft\.?\s|\bfeaturing\s)\s*', value, flags=re.I)
         return (len(credits) > 1 and primary_matches(credits[0])
                 and all(normalize(guest) in features for guest in credits[1:]))
-    def rank_candidates(rows):
+    def album_key(value):
+        return normalize(re.sub(r'\s+[-–—]\s+(?:Single|EP)$', '', value, flags=re.I))
+    album_keys = {album_key(a) for a in (album, *album_aliases) if a}
+    # Only split collaborations corroborated by the recording catalogue.
+    member_pairs = []
+    for credit, label in search_pairs:
+        members = re.split(r'\s*(?:&|、|\band\b)\s*', credit, flags=re.I)
+        if 1 < len(members) <= 4 and all(members):
+            member_pairs.extend((member, t) for member in members for t in title_variants(label))
+    member_pairs = tuple(sorted(dict.fromkeys(member_pairs),
+                               key=lambda pair: not any(ord(c) > 127 for c in pair[0])))[:8]
+    member_keys = {normalize(v) for member, _ in member_pairs
+                   for v in CATALOG['script_forms'](member)}
+    def member_matches(row):
+        # A solo credit alone is insufficient: require the known release and
+        # duration, in addition to the title check below.
+        return (bool(expected_duration) and bool(album_keys)
+                and normalize(str(row.get('artistName') or '')) in member_keys
+                and album_key(str(row.get('albumName') or '')) in album_keys)
+    def rank_candidates(rows, allow_members=False):
         # Never put another artist's lyrics on the display just because a title matches.
-        rows = [r for r in rows if artist_matches(str(r.get('artistName') or ''))
-                and {normalize(v) for v in title_variants(r.get('trackName', ''))}
+        rows = [r for r in rows if (artist_matches(str(r.get('artistName') or ''))
+                                   or (allow_members and member_matches(r)))
+                and {normalize(v) for label in title_variants(r.get('trackName', ''))
+                   for v in CATALOG['script_forms'](label)}
                 & {normalize(t) for t in titles}]
         # Searches can return the same recording; don't count it as extra support.
         rows = list({json.dumps(r, sort_keys=True): r for r in rows}.values())
@@ -380,10 +408,6 @@ def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
                 except (TypeError, ValueError):
                     return False
             rows = [r for r in rows if same_duration(r)]
-        def album_key(value):
-            # Catalogues commonly append " - Single" or " - EP" to releases.
-            return normalize(re.sub(r'\s+[-–—]\s+(?:Single|EP)$', '', value, flags=re.I))
-        album_keys = {album_key(a) for a in (album, *album_aliases) if a}
         if album_keys:
             release_rows = [r for r in rows if album_key(str(r.get('albumName') or '')) in album_keys]
             if release_rows:
@@ -398,6 +422,14 @@ def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
         return rows
 
     rows = rank_candidates(rows)
+    if member_pairs and expected_duration and album_keys and not any(r.get('syncedLyrics') or r.get('instrumental') for r in rows):
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            member_results = list(pool.map(search, member_pairs))
+        member_rows = []
+        for found, failed in member_results:
+            member_rows.extend(found)
+            failures += failed
+        rows = rank_candidates([*rows, *member_rows], allow_members=True)
     if not rows or not any(r.get('syncedLyrics') or r.get('instrumental') for r in rows):
         try:
             candidates = rank_candidates(netease_candidates(pairs))
@@ -662,7 +694,7 @@ def lyrics_status(current):
         return 'Instrumental'
     if current.get('lyrics'):
         return 'Lyrics found · tap song info'
-    return 'Song identified · lyrics not in catalogue'
+    return 'No matching synced lyrics found'
 
 
 def publish(data):

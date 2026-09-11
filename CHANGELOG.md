@@ -21,6 +21,14 @@
 
 ### Fixed
 
+- Retrieve NetEase lyrics with `lv=-1`; requesting version 1 could return an
+  empty lyric body even when synchronized lyrics were available.
+- Find duet lyrics credited to one catalogue-verified member, requiring matching
+  title, album, and recording duration. Bound additional searches to eight.
+- Match traditional and simplified Chinese provider metadata with local ICU
+  conversion, preserving kana-bearing labels and original display names.
+- Report “No matching synced lyrics found” instead of claiming catalogue absence.
+
 - Resolve native Chinese/Japanese names automatically using the recognized Apple
   recording ID across regional catalogues, with duration checks for lyric versions.
 - Accept explicitly credited guest artists whether stored in the title or artist field.
