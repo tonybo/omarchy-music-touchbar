@@ -131,3 +131,17 @@ The panel distinguishes “Song identified · lyrics lookup retrying…” from
 card with “Lyrics found · tap song info”; no timing is invented for plain text.
 A successful LRCLIB result means NetEase is not queried, even if some alternate
 LRCLIB search requests failed.
+
+## Truncated radio titles
+
+A title fragment such as `Artist - I` may be an ICY metadata truncation of
+`Artist - I'm With You`. A matching artist and prefix alone do not override a
+conflict. The worker records a second eight-second sample and requires the same
+Shazam track ID, artist, title, and a playback anchor within three seconds of the
+first sample. One-letter fragments qualify only at an apostrophe boundary;
+longer prefixes need at least four normalized characters. Ordinary conflicting
+titles remain rejected. The fragment is not passed to lyric search as an alias.
+
+If recognition lacks an Apple Music ID, a bounded catalogue search can recover
+it only from a unique exact artist/title result. Regional names are then checked
+against that recording ID as usual. LRCLIB remains first, NetEase second.

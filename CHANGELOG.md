@@ -12,6 +12,9 @@
 
 ### Matching and lookup recovery
 
+- Recover truncated stream titles only after two consistent audio fingerprints;
+  resolve missing catalogue IDs from unique exact artist/title search results.
+
 - Match bilingual soundtrack titles and remaster labels without relaxing artist
   or recording-duration validation; ignore recognizable stale ad campaign tags.
 - Expire cached empty lookups and distinguish service failures from absent lyrics.

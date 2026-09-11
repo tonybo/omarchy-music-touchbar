@@ -548,13 +548,29 @@ def record_radio(state, seconds=8):
     return buf.getvalue(), start + delay
 
 
-def lookup(state, sample_seconds=8):
+def truncated_metadata_candidate(radio_text, artist, title, catalog):
+    expected_artist, prefix = split_title(radio_text)
+    artists = (artist, *catalog.get('artists', ()))
+    if not normalize(expected_artist) or normalize(expected_artist) not in {normalize(a) for a in artists}:
+        return False
+    prefix = prefix.rstrip(' .…').casefold()
+    if not prefix:
+        return False
+    for name in (title, *catalog.get('titles', ())):
+        full = name.casefold()
+        if full.startswith(prefix) and len(full) > len(prefix) + 2:
+            # One-letter fragments only qualify at apostrophes, a common ICY
+            # truncation boundary. Ordinary different titles still conflict.
+            if len(normalize(prefix)) >= 4 or full[len(prefix)] in "'’":
+                return True
+    return False
+
+
+def recognize_sample(state, seconds):
     from shazamio import Shazam
-    audio, captured = record_radio(state, seconds=sample_seconds)
-    # Analyze the whole sample. Library center-cropping would shift the
-    # fingerprint relative to captured and make the lyric anchor inaccurate.
+    audio, captured = record_radio(state, seconds=seconds)
     result = asyncio.run(asyncio.wait_for(
-        Shazam(segment_duration_seconds=sample_seconds).recognize(audio), timeout=25))
+        Shazam(segment_duration_seconds=seconds).recognize(audio), timeout=25))
     track = result.get('track') or {}
     matches = result.get('matches') or []
     if not track or not matches:
@@ -562,12 +578,34 @@ def lookup(state, sample_seconds=8):
     offset = float(matches[0].get('offset', -1))
     if not math.isfinite(offset) or not 0 <= offset < 7200:
         raise ValueError('Recognition provided no usable song position')
+    return track, captured, offset
+
+
+def consistent_confirmation(first, second):
+    track, captured, offset = first
+    other, next_capture, next_offset = second
+    return (bool(track.get('key')) and track.get('key') == other.get('key')
+            and normalize(track.get('subtitle', '')) == normalize(other.get('subtitle', ''))
+            and normalize(track.get('title', '')) == normalize(other.get('title', ''))
+            and next_capture > captured
+            and abs((next_capture - next_offset) - (captured - offset)) <= 3)
+
+
+def lookup(state, sample_seconds=8):
+    track, captured, offset = recognize_sample(state, sample_seconds)
     artist, title = track.get('subtitle', ''), track.get('title', '')
     catalog = CATALOG['resolve'](track)
     radio_artist, radio_title = split_title(state.get('title', ''))
     agrees = metadata_agrees(state.get('title', ''), artist, title)
     if not agrees:
         agrees = CATALOG['corroborates'](radio_artist, radio_title, artist, title, catalog)
+    truncated = False
+    if not agrees and truncated_metadata_candidate(state.get('title', ''), artist, title, catalog):
+        confirmation = recognize_sample(state, 8)
+        if consistent_confirmation((track, captured, offset), confirmation):
+            track, captured, offset = confirmation
+            agrees = truncated = True
+            logging.info('Confirmed truncated stream title via two audio samples: %s / %s', artist, title)
     if not agrees:
         logging.warning('Rejected conflicting match %s / %s; radio says %s',
                         artist, title, state.get('title', ''))
@@ -591,7 +629,7 @@ def lookup(state, sample_seconds=8):
         # These variants are usable only after metadata_agrees above has
         # corroborated this fingerprint against the station's current song.
         aliases = tuple(dict.fromkeys((*catalog.get('titles', ()), *aliases,
-                                      *((radio_title,) if radio_artist and not campaign_metadata(state.get('title', '')) else ()))))
+                                      *((radio_title,) if radio_artist and not truncated and not campaign_metadata(state.get('title', '')) else ()))))
         artist_aliases = tuple(dict.fromkeys((
             *catalog.get('artists', ()), *configured_artist_aliases(artist),
             *((radio_artist,) if radio_artist and not campaign_metadata(state.get('title', '')) else ()))))

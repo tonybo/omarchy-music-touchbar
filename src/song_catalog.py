@@ -99,8 +99,36 @@ def catalog_rows(identifier, country, window):
         return []
 
 
+@lru_cache(maxsize=128)
+def search_recording_id(artist, title, window):
+    """Recover a missing Apple ID only from one exact artist/title result."""
+    if not artist or not title:
+        return ''
+    query = urllib.parse.urlencode({'term': artist + ' ' + title, 'entity': 'song',
+                                    'country': 'us', 'limit': 20})
+    try:
+        request = urllib.request.Request('https://itunes.apple.com/search?' + query,
+                                         headers={'User-Agent': UA})
+        with urllib.request.urlopen(request, timeout=6) as response:
+            raw = response.read(262145)
+        if len(raw) > 262144:
+            return ''
+        data = json.loads(raw)
+        identifiers = {str(r.get('trackId', '')) for r in data.get('results', [])
+                       if isinstance(r, dict) and r.get('kind') == 'song'
+                       and normalize(r.get('artistName', '')) == normalize(artist)
+                       and normalize(r.get('trackName', '')) == normalize(title)
+                       and re.fullmatch(r'[0-9]{1,20}', str(r.get('trackId', '')))}
+        return next(iter(identifiers)) if len(identifiers) == 1 else ''
+    except (OSError, ValueError, TypeError, AttributeError):
+        return ''
+
+
 def resolve(track):
     identifier = apple_track_id(track)
+    if not identifier:
+        identifier = search_recording_id(track.get('subtitle', ''), track.get('title', ''),
+                                         int(time.monotonic() // 300))
     if not identifier:
         return {}
     window = int(time.monotonic() // 300)
