@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## v1.1.0 — Music Touchbar (2026-09-12)
+
+- Rename the project from Touch Bar Radio to Music Touchbar, covering both Radio Atlas and Apple Music. Keep the existing plugin ID and installed paths for compatibility.
+- Add automatic active-player selection, source-specific playback controls, panel taps, and app-only volume swipes. Gestures stay with the player where they started.
+- Add optional Apple Music setup, including a backed-up MusicKit clock correction for its Omarchy plugin. Apple Music uses native metadata and timing without audio recognition.
+- Require full Apple Music lyric titles, with equivalent Chinese script forms allowed. Validate recording duration/release and reuse the existing LRCLIB/NetEase fallback.
+- Filter small backward clock corrections that could flash between adjacent lyric phrases. Preserve larger seeks and reset timing on pause, source change, and track change.
+- Reuse the song-information window and bring it to the current workspace, with Apple Music artwork and song details.
+- Add media routing, exact-title, jitter, song-window, and Apple setup regression coverage.
+
+
 
 ### Added
 

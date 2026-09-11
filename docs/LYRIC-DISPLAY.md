@@ -1,5 +1,7 @@
 # Lyric display interruptions
 
+For Apple Music, see [exact-title matching and clock behavior](APPLE-MUSIC.md#lyrics-and-matching). The audio-recognition and catalogue-alias flow below applies to Radio Atlas.
+
 ## Multilingual recognition and lyrics
 
 The worker resolves localized artist, title, and album names automatically from

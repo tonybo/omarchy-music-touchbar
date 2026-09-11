@@ -20,7 +20,7 @@ ETC = Path('/etc/omarchy-touchbar-radio')
 DATA = Path('/var/lib/omarchy-touchbar-radio')
 MANIFEST = DATA / 'install.json'
 UNIT = 'touchbar-radio-renderer.service'
-USER_UNITS = ['touchbar-radio-feed.service', 'touchbar-radio-gestures.service']
+USER_UNITS = ['touchbar-radio-media.service', 'touchbar-radio-feed.service', 'touchbar-radio-gestures.service']
 MARKER = '-- omarchy-touchbar-radio: managed include'
 
 
@@ -72,7 +72,28 @@ def display_width():
     raise ValueError('No Touch Bar DRM display found. Configure tiny-dfr first, or pass --display-width.')
 
 
-def unit_text(role, karaoke_python=None, background=False):
+def unit_text(role, karaoke_python=None, background=False, apple_music=False):
+    if role == 'media':
+        return f'''[Unit]
+Description=Music Touchbar active player selection
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/python3 -I {LIB}/media.py serve
+Environment=TOUCHBAR_APPLE_MUSIC={int(apple_music)}
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%t
+RestrictAddressFamilies=AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=graphical-session.target
+'''
     if role == 'karaoke':
         if not karaoke_python:
             raise ValueError('Karaoke requires a prepared Python 3.12 environment.')
@@ -143,7 +164,17 @@ WantedBy=graphical-session.target
 '''
 
 
-def plan(account, width, height, dictation, karaoke_python=None, background=False):
+def apple_bridge(source):
+    original = '    const state = JSON.stringify(model.serializePlayer(instance))'
+    replacement = (REPO / 'patches/apple-music-clock.js').read_text().rstrip('\n')
+    if replacement in source:
+        return source
+    if source.count(original) != 1:
+        raise ValueError('Apple Music bridge is not compatible with this clock patch. Update the plugin or install without --with-apple-music.')
+    return source.replace(original, replacement)
+
+
+def plan(account, width, height, dictation, karaoke_python=None, background=False, apple_music=False):
     home=Path(account.pw_dir)
     config=Path('/etc/tiny-dfr/config.toml')
     defaults=tomllib.loads(Path('/usr/share/tiny-dfr/config.toml').read_text())
@@ -169,6 +200,13 @@ def plan(account, width, height, dictation, karaoke_python=None, background=Fals
     add('/etc/systemd/system/'+UNIT,unit_text('renderer'))
     for role in ('feed','gestures'):
         add(home/f'.config/systemd/user/touchbar-radio-{role}.service',unit_text(role),user=True)
+    add(home/'.config/systemd/user/touchbar-radio-media.service',
+        unit_text('media', apple_music=apple_music), user=True)
+    if apple_music:
+        bridge = home/'.config/omarchy/plugins/melonamin.apple-music/extension/player-bridge.js'
+        if not bridge.is_file():
+            raise ValueError('Install the melonamin.apple-music Omarchy plugin before enabling Apple Music support.')
+        add(bridge, apple_bridge(bridge.read_text()), user=True, replace=True)
     if karaoke_python:
         add(home/'.config/systemd/user/touchbar-radio-karaoke.service',
             unit_text('karaoke', karaoke_python, background), user=True)
@@ -179,11 +217,12 @@ def plan(account, width, height, dictation, karaoke_python=None, background=Fals
         rules+=f'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{{name}}=="{name}", RUN+="/usr/bin/setfacl -m u:{account.pw_name}:r /dev/input/%k"\n'
     add('/etc/udev/rules.d/99-omarchy-touchbar-radio.rules',rules)
     player=home/'.config/omarchy/plugins/akshar.radio-atlas/radio-player'
-    if not player.is_file(): raise ValueError('Install and enable the Radio Atlas Omarchy plugin first.')
+    if not player.is_file() and not apple_music:
+        raise ValueError('Install Radio Atlas or enable --with-apple-music with the Apple Music plugin installed.')
     binds='-- Tap/swipe is handled by the gesture service, not an F14 binding.\n'
     for key,action in [('XF86Launch6','previous'),('XF86Launch7','toggle'),('XF86Launch8','next')]:
-        command=f"'{str(player).replace(chr(39), chr(39)+chr(34)+chr(39)+chr(34)+chr(39))}' {action}"
-        binds+=f'o.bind("{key}", "Touch Bar radio {action}", {json.dumps(command)})\n'
+        command=f'/usr/bin/python3 -I {LIB}/media.py {action}'
+        binds+=f'hl.unbind("{key}")\no.bind("{key}", "Music Touchbar {action}", {json.dumps(command)})\n'
     if dictation:
         if not shutil.which('voxtype'): raise ValueError('Voxtype is required for --with-dictation.')
         vox=home/'.config/voxtype/config.toml'
@@ -214,7 +253,7 @@ def apply(files,account):
             st=p.stat()
             previous={'data':base64.b64encode(p.read_bytes()).decode(),'mode':st.st_mode&0o777,'uid':st.st_uid,'gid':st.st_gid}
         records[name]={'previous':previous,'sha256':hashlib.sha256(item['data']).hexdigest(),'dynamic':item['dynamic'],'installed':False}
-    MANIFEST.write_text(json.dumps({'version':'1.0.0','user':account.pw_name,'files':records,'user_units':user_units},indent=2)+'\n')
+    MANIFEST.write_text(json.dumps({'version':'1.1.0','user':account.pw_name,'files':records,'user_units':user_units},indent=2)+'\n')
     MANIFEST.chmod(0o600)
     for name,item in files.items():
         p=Path(name)
@@ -227,7 +266,7 @@ def apply(files,account):
         p.write_bytes(item['data']);p.chmod(0o644)
         os.chown(p,account.pw_uid if item['user'] else 0,account.pw_gid if item['user'] else 0)
         records[name]['installed']=True
-        MANIFEST.write_text(json.dumps({'version':'1.0.0','user':account.pw_name,'files':records,'user_units':user_units},indent=2)+'\n')
+        MANIFEST.write_text(json.dumps({'version':'1.1.0','user':account.pw_name,'files':records,'user_units':user_units},indent=2)+'\n')
     subprocess.run(['udevadm','control','--reload-rules'],check=True)
     for e in Path('/sys/class/input').glob('event*'):
         if (e/'device/name').read_text().strip() in ('Apple Inc. Touch Bar Display Touchpad','Dynamic Function Row Virtual Input Device'):
@@ -247,7 +286,7 @@ def uninstall():
         if p.is_symlink(): raise ValueError(f'Path changed to a symlink: {p}')
         if p.exists() and not item['dynamic'] and hashlib.sha256(p.read_bytes()).hexdigest()!=item['sha256']:
             raise ValueError(f'{p} changed since installation. Back it up and restore the installed version before uninstalling.')
-    user_systemctl(account,'disable','--now',*saved.get('user_units', USER_UNITS))
+    user_systemctl(account,'disable','--now',*saved.get('user_units', ['touchbar-radio-feed.service', 'touchbar-radio-gestures.service']))
     # Stop the dedicated popup only when it is running.
     runtime = f'/run/user/{account.pw_uid}'
     if Path(runtime + '/bus').exists():
@@ -277,6 +316,7 @@ def main():
     parser.add_argument('--user',default=os.environ.get('SUDO_USER',os.environ.get('USER')))
     parser.add_argument('--display-width',type=int)
     parser.add_argument('--with-dictation',action='store_true')
+    parser.add_argument('--with-apple-music',action='store_true', help='Enable Apple Music and patch its installed bridge to export the song clock')
     parser.add_argument('--with-karaoke',action='store_true', help='Enable Shazam recognition with LRCLIB and NetEase lyric lookup')
     parser.add_argument('--with-background',action='store_true', help='Also look up artist/song/album names on Wikipedia')
     parser.add_argument('--karaoke-python', help='Path to a prepared Python 3.12 virtual environment interpreter')
@@ -287,12 +327,15 @@ def main():
     if args.uninstall:
         if args.dry_run: parser.error('--dry-run is for installation only')
         uninstall();print('Uninstalled; run hyprctl reload in your desktop session.');return
-    if MANIFEST.exists(): parser.error('Already installed. Uninstall before installing v1.0.0; see docs/MIGRATING.md.')
+    if MANIFEST.exists(): parser.error('Already installed. Uninstall before installing v1.1.0; see docs/MIGRATING.md.')
     if not args.user or not re.fullmatch(r'[a-z_][a-z0-9_-]*',args.user): parser.error('Pass a regular Linux username with --user.')
     account=pwd.getpwnam(args.user)
     if account.pw_uid==0: parser.error('The desktop user must not be root.')
     for command in ['tiny-dfr','setfacl','systemctl','udevadm','runuser']:
         if not shutil.which(command): parser.error(f'Missing dependency: {command}')
+    if args.with_apple_music:
+        for command in ('omarchy-shell', 'hyprctl', 'busctl', 'pactl'):
+            if not shutil.which(command): parser.error(f'Missing Apple Music dependency: {command}')
     subprocess.run(['/usr/bin/python3','-I','-c','import gi; gi.require_version("Pango", "1.0"); gi.require_version("PangoCairo", "1.0"); from gi.repository import Pango, PangoCairo'],check=True)
     width,height=(args.display_width,60) if args.display_width else display_width()
     if not 1000<=width<=3000: parser.error('Unsupported display width.')
@@ -312,7 +355,7 @@ def main():
         if os.geteuid() == 0:
             check = ['runuser', '-u', account.pw_name, '--', *check]
         subprocess.run(check, check=True)
-    files=plan(account,width,height,args.with_dictation,karaoke_python,args.with_background)
+    files=plan(account,width,height,args.with_dictation,karaoke_python,args.with_background,args.with_apple_music)
     if args.dry_run:
         print('\n'.join(files));return
     apply(files,account)

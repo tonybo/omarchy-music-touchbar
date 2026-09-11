@@ -1,14 +1,16 @@
 # Setup and reference
 
-[← Back to Touch Bar Radio](../README.md)
+[← Back to Music Touchbar](../README.md)
+
+See [Apple Music setup and switching](APPLE-MUSIC.md) for the new v1.1.0 source.
 
 ## Requirements
 
 - A working `tiny-dfr` Touch Bar and its systemd service. Set this up first using the [T2 Linux guide](https://wiki.t2linux.org/guides/postinstall/#adding-support-for-customisable-touch-bar).
 - Omarchy with **Hyprland Lua configuration** and `omarchy-shell`.
-- [Radio Atlas](https://github.com/AksharP5/omarchy-radio-atlas), installed and enabled.
+- [Radio Atlas](https://github.com/AksharP5/omarchy-radio-atlas), or the [Apple Music plugin](https://github.com/melonamin/omarchy-apple-music) with `--with-apple-music`. Both can be installed together.
 - Python 3.11+, PyGObject, Pango, and PangoCairo.
-- systemd, `acl` (`setfacl`), and the normal Radio Atlas playback dependencies.
+- systemd, `acl` (`setfacl`), and the playback dependencies for your selected apps. Apple support also needs `busctl`, `pactl`, and PyGObject/Gio.
 - Optional: a working Voxtype installation for the dictation button.
 - Optional: ICU's `uconv` (`icu` on Arch, `icu-devtools` on Debian/Ubuntu) for
   pinyin and kana artist-name corroboration. Catalogue aliases work without it.
@@ -31,7 +33,7 @@ For a Touch Bar that crashes or stays blank after wake, use the
 ## Install the Omarchy plugin
 
 ```sh
-omarchy plugin add https://github.com/tonybo/omarchy-touchbar-radio.git --enable
+omarchy plugin add https://github.com/tonybo/omarchy-music-touchbar.git --enable
 omarchy-shell shell summon tonybo.touchbar-radio '{}'
 ```
 
@@ -73,8 +75,8 @@ repository again and run `./install.sh --uninstall` to restore the backups.
 Run these commands as your normal desktop user:
 
 ```sh
-git clone https://github.com/tonybo/omarchy-touchbar-radio.git
-cd omarchy-touchbar-radio
+git clone https://github.com/tonybo/omarchy-music-touchbar.git
+cd omarchy-music-touchbar
 
 # Inspect the files that would be installed; no files are changed.
 python3 tools/install.py --dry-run
@@ -111,11 +113,11 @@ Configure and test Voxtype's microphone and transcription model separately. This
 | --- | --- |
 | Tap the cover/title/artist box (karaoke) | Open or focus the song-information window |
 | Tap `•••` / `‹` | Expand / collapse non-music controls |
-| Tap the large media panel | Toggle Radio Atlas open / closed |
-| Swipe right across that panel | Raise Radio Atlas volume |
-| Swipe left across that panel | Lower Radio Atlas volume |
+| Tap the large media panel | Toggle the selected music app open / closed |
+| Swipe right across that panel | Raise the selected app’s volume |
+| Swipe left across that panel | Lower the selected app’s volume |
 | Lift your finger | Briefly keep the final percentage, then restore media info |
-| Previous / play-pause / next | Control Radio Atlas directly |
+| Previous / play-pause / next | Control the selected app (radio stations or Apple tracks) |
 | Microphone, if installed | Toggle Voxtype dictation |
 | Existing volume buttons | Change system volume |
 
@@ -123,7 +125,7 @@ A swipe must move approximately 25 display pixels before becoming a volume gestu
 
 Playback status refreshes five times per second. The radio panel distinguishes live playback, loading, pause, and stream errors; button updates wait until your touch is released.
 
-Metadata comes from Radio Atlas or, when enabled, audio recognition. Text scrolls after a short pause, and short names stay still. “70%” means **radio-player volume**, not system volume.
+Metadata comes from Radio Atlas or Apple Music; radio can also use optional audio recognition. Text scrolls after a short pause, and short names stay still. “70%” means **selected-player volume**, not system volume.
 
 ## Customize
 
@@ -148,7 +150,7 @@ From the checkout:
 
 This stops the services, removes installed files, restores the previous tiny-dfr and Hyprland configuration, reloads udev, and restarts the Touch Bar. It refuses to overwrite files edited since installation; back up those edits first. Radio Atlas and Voxtype themselves are not removed.
 
-Original files are stored in the root-readable installation manifest at `/var/lib/omarchy-touchbar-radio/install.json`. Do not delete that manifest before uninstalling. For this first version, upgrades are **uninstall, update the checkout, reinstall**.
+Original files are stored in the root-readable installation manifest at `/var/lib/omarchy-touchbar-radio/install.json`. Do not delete that manifest before uninstalling. Packaged upgrades are **uninstall, update the checkout, reinstall**.
 
 ## Troubleshooting
 
@@ -160,7 +162,7 @@ journalctl --user -u touchbar-radio-gestures -n 50
 hyprctl configerrors
 ```
 
-- **No metadata:** confirm Radio Atlas is playing and `touchbar-radio-feed` is active. Its sanitized output is `/var/lib/omarchy-touchbar-radio/status.json`.
+- **No metadata:** confirm a supported player is playing and `touchbar-radio-media` and `touchbar-radio-feed` are active. Its sanitized output is `/var/lib/omarchy-touchbar-radio/status.json`.
 - **No taps or swipes:** the gesture journal should say it is watching the digitizer and the Dynamic Function Row virtual input device. Replug/restart the Touch Bar or log in again after installing its udev rule.
 - **New icon/layout not visible:** restart `tiny-dfr` once. Normal track and volume updates do not require restarts.
 - **Touch Bar blanks after suspend:** first verify `tiny-dfr` works independently. This project does not unload T2 kernel drivers or change suspend handling.

@@ -9,6 +9,7 @@ Install PyGObject/Pango and Pillow for the test interpreter, then run the tests 
 ```sh
 python3 -m unittest discover -s tests -v
 python3 -m compileall -q src tools
+node --test tests/test_apple_clock.cjs
 ```
 
 The most valuable checks are:
@@ -23,4 +24,4 @@ The most valuable checks are:
 
 Keep raw input access narrow, never execute stream metadata, and do not make system configuration user-writable to simplify rendering. Rendering changes should preserve the protected service boundary.
 
-Useful future directions include a native tiny-dfr image-refresh interface, broader hardware detection, MPRIS media sources, configurable gestures, and a graphical preferences page.
+Useful future directions include a native tiny-dfr image-refresh interface, broader hardware detection, additional media sources, configurable gestures, and a graphical preferences page.

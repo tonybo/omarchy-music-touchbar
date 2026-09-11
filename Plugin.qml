@@ -32,6 +32,7 @@ Item {
         if (dictation.checked && action !== "uninstall") args.push("--with-dictation")
         if (karaoke.checked && action !== "uninstall") args.push("--with-karaoke")
         if (karaoke.checked && background.checked && action !== "uninstall") args.push("--with-background")
+        if (appleMusic.checked && action !== "uninstall") args.push("--with-apple-music")
         Quickshell.execDetached(args)
         close()
     }
@@ -84,14 +85,14 @@ Item {
                     Keys.onEscapePressed: root.close()
                     Text {
                         width: parent.width
-                        text: "Touch Bar Radio"
+                        text: "Music Touchbar"
                         color: Color.menu.text
                         font.pixelSize: 24
                         font.bold: true
                     }
                     Text {
                         width: parent.width
-                        text: "Radio Atlas on your T2 MacBook Touch Bar. Setup requires a working tiny-dfr display and Omarchy with Hyprland Lua."
+                        text: "Radio Atlas and Apple Music on your T2 MacBook Touch Bar. Setup requires a working tiny-dfr display and Omarchy with Hyprland Lua."
                         color: Color.menu.text
                         wrapMode: Text.WordWrap
                     }
@@ -105,13 +106,27 @@ Item {
                             "\nGestures: " + (root.status.gestures || "unknown") +
                             "\nKaraoke: " + (root.status.karaoke || "not installed") +
                             "\nRadio Atlas: " + (root.status.radioAtlas ? "found" : "not found") +
+                            "\nApple Music: " + (root.status.appleMusic ? "found" : "not found") +
+                            "\nPlayer selection: " + (root.status.media || "not installed") +
                             "\nHyprland Lua: " + (root.status.hyprlandLua ? "found" : "not found"))
                         color: Color.menu.text
                         wrapMode: Text.WordWrap
                     }
                     CheckBox {
+                        id: appleMusic
+                        text: "Enable Apple Music support"
+                        palette.windowText: Color.menu.text
+                    }
+                    Text {
+                        width: parent.width
+                        visible: appleMusic.checked
+                        text: "Requires the Apple Music Omarchy plugin. Setup adds its song-clock correction; restart Apple Music afterward, then select a song."
+                        color: Color.menu.text
+                        wrapMode: Text.WordWrap
+                    }
+                    CheckBox {
                         id: karaoke
-                        text: "Enable song recognition and timed lyrics"
+                        text: "Enable timed lyrics and radio song recognition"
                         palette.windowText: Color.menu.text
                     }
                     CheckBox {
@@ -123,7 +138,7 @@ Item {
                     Text {
                         width: parent.width
                         visible: karaoke.checked
-                        text: "Requires the Python 3.12 environment described in the README. Recognition sends a short sample of radio audio to Shazam and song names to LRCLIB. Background lookup also sends names to Wikipedia."
+                        text: "Requires the Python 3.12 environment described in the README. Radio recognition sends a short radio audio sample to Shazam. Lyrics send song metadata to LRCLIB and NetEase. Apple Music uses its own metadata and does not record audio. Background lookup also sends names to Wikipedia."
                         color: Color.menu.text
                         wrapMode: Text.WordWrap
                     }
@@ -155,7 +170,7 @@ Item {
                         width: parent.width
                         spacing: 8
                         Button { text: "Refresh"; enabled: !statusProcess.running; onClicked: root.refresh() }
-                        Button { text: "README"; onClicked: Qt.openUrlExternally("https://github.com/tonybo/omarchy-touchbar-radio#readme") }
+                        Button { text: "README"; onClicked: Qt.openUrlExternally("https://github.com/tonybo/omarchy-music-touchbar#readme") }
                         Button { text: "Close"; onClicked: root.close() }
                     }
                 }

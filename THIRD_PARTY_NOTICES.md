@@ -45,3 +45,11 @@ background lookup is opt-in.
 
 The detective animation uses the Noto Color Emoji detective glyph (Google,
 SIL Open Font License 1.1). See assets/NOTO-EMOJI-LICENSE for the license.
+
+Apple Music support integrates with the separately installed
+[Omarchy Apple Music plugin](https://github.com/melonamin/omarchy-apple-music)
+(MIT, Copyright 2026 Ameba Labs, LLC). The setup helper applies a small
+Media Session clock patch to the user's existing bridge; the full extension
+and browser profile are not bundled. Apple Music and its artwork are Apple
+or their respective rights holders' property. No song audio or lyrics are
+bundled with this release.

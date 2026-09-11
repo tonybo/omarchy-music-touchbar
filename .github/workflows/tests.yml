@@ -8,11 +8,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install rendering dependencies
-        run: sudo apt-get update && sudo apt-get install -y python3-gi python3-pil gir1.2-pango-1.0 fonts-noto-cjk
+        run: sudo apt-get update && sudo apt-get install -y python3-gi python3-pil gir1.2-pango-1.0 fonts-noto-cjk icu-devtools
       - name: Compile Python
         run: /usr/bin/python3 -m compileall -q src tools
       - name: Run tests
         run: /usr/bin/python3 -m unittest discover -s tests -v
+      - name: Test Apple Music clock bridge
+        run: node --test tests/test_apple_clock.cjs
       - name: Check shell syntax
         run: |
           bash -n install.sh

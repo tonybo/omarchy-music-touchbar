@@ -10,7 +10,7 @@ import urllib.request
 
 # The installer enables this only with --with-background.
 WIKIPEDIA_ENABLED = os.environ.get('TOUCHBAR_WIKIPEDIA') == '1'
-UA = 'OmarchyTouchbarRadio/1.0 (https://github.com/tonybo/omarchy-touchbar-radio)'
+UA = 'MusicTouchbar/1.1 (https://github.com/tonybo/omarchy-music-touchbar)'
 
 
 def norm(value):

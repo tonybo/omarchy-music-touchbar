@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="assets/touchbar-radio-lyrics-icon-v2.png" alt="Touch Bar Radio icon: a musical note above highlighted lyrics and a next-line preview" width="144" height="144">
+  <img src="assets/touchbar-radio-lyrics-icon-v2.png" alt="Music Touchbar icon: a musical note above highlighted lyrics and a next-line preview" width="144" height="144">
 </p>
 
 <p align="center">
-  <img src="assets/readme-hero.svg" alt="Touch Bar Radio. A little bar. A whole world of music." width="100%">
+  <img src="assets/readme-hero.svg" alt="Music Touchbar. A little bar. A whole world of music." width="100%">
 </p>
 
 <p align="center">
-  Live radio. Lyrics that follow along. Control at your fingertips.<br>
-  Made for your MacBook Touch Bar, with Omarchy and Radio Atlas.
+  Radio and Apple Music. Lyrics that follow along. Control at your fingertips.<br>
+  Made for your MacBook Touch Bar, with Omarchy, Radio Atlas, and Apple Music.
 </p>
 
 <p align="center">
@@ -27,7 +27,7 @@
 
 ## Stay in the music.
 
-Your station, song, and artist, right where your hands are. Change stations with a tap. Swipe to find the right volume. Open Radio Atlas without breaking your flow.
+Your station, song, and artist, right where your hands are. Start playing in Radio Atlas or Apple Music and the Touch Bar follows. Skip stations or tracks, swipe to adjust that player’s volume, and tap to open the active app.
 
 ## Follow every line.
 
@@ -35,7 +35,7 @@ Add optional synchronized lyrics and watch the current line light up as the song
 
 [![Current lyric highlighted in mint, with the next line beneath it](assets/screenshots/lyrics-live-02.png)](assets/screenshots/lyrics-live-02.png)
 
-<sub>Lyrics depend on recognition and availability. The highlight follows line timing; it is not word-by-word alignment.</sub>
+<sub>Radio lyrics depend on recognition and availability. Apple Music lyrics use its exact track title and playback clock, with LRCLIB/NetEase fallback; Apple’s own lyrics are not currently exported by the supported web app. The highlight follows line timing; it is not word-by-word alignment.</sub>
 
 ## There’s more to every song.
 
@@ -49,12 +49,16 @@ Keep brightness, keyboard backlight, and system volume within reach. Expand the 
 
 ## Get started
 
-You’ll need a **T2 MacBook with a working tiny-dfr Touch Bar**, **Omarchy with Hyprland Lua and omarchy-shell**, and **[Radio Atlas](https://github.com/AksharP5/omarchy-radio-atlas)**. Check the [full requirements](docs/GUIDE.md#requirements) first.
+**New in v1.1.0:** formerly Touch Bar Radio, now Music Touchbar. The plugin ID stays `tonybo.touchbar-radio` so existing configurations remain compatible.
+
+You’ll need a **T2 MacBook with a working tiny-dfr Touch Bar**, **Omarchy with Hyprland Lua and omarchy-shell**, and **Radio Atlas or the Apple Music Omarchy plugin**. Check the [full requirements](docs/GUIDE.md#requirements) first.
 
 ```sh
-omarchy plugin add https://github.com/tonybo/omarchy-touchbar-radio.git --enable
+omarchy plugin add https://github.com/tonybo/omarchy-music-touchbar.git --enable
 omarchy-shell shell summon tonybo.touchbar-radio '{}'
 ```
+
+Enable **Apple Music support** if you use the `melonamin.apple-music` plugin. See [Apple Music setup and switching](docs/APPLE-MUSIC.md).
 
 In the setup panel, choose **Preview setup**, then **Install hardware support**. The installer backs up replaced files and asks for confirmation before making changes.
 

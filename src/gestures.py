@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import runpy
 from pathlib import Path
 import select
 import struct
@@ -18,8 +19,8 @@ import urllib.parse
 EVENT=struct.Struct('llHHi')
 RAW='Apple Inc. Touch Bar Display Touchpad'
 VIRTUAL='Dynamic Function Row Virtual Input Device'
-PLAYER=str(Path.home()/'.config/omarchy/plugins/akshar.radio-atlas/radio-player')
-STATUS=Path(os.environ['XDG_RUNTIME_DIR'])/'omarchy-radio-atlas/status.json'
+MEDIA=runpy.run_path(str(Path(__file__).with_name('media.py')))
+STATUS=Path(os.environ['XDG_RUNTIME_DIR'])/'touchbar-media.json'
 FEEDBACK=Path(os.environ['XDG_RUNTIME_DIR'])/'radio-touchbar-volume.json'
 
 def volume_for_swipe(volume, dx):
@@ -56,7 +57,7 @@ class Gesture:
 
 def current_volume():
     try:
-        return max(0,min(100,int(float(json.loads(STATUS.read_text()).get('volume',70)))))
+        return max(0,min(100,int(float(MEDIA['current_state']().get('volume',70)))))
     except (OSError,ValueError,TypeError): return 70
 
 def panel_bounds(width=2170):
@@ -89,12 +90,14 @@ def feedback(active,volume):
 
 class VolumeOutput:
     def __init__(self):
-        self.pending=None;self.process=None;self.sent=None
+        self.pending=None;self.process=None;self.sent=None;self.state={}
     def request(self,value): self.pending=value
     def tick(self):
         if self.process is not None and self.process.poll() is None: return
         if self.pending is not None and self.pending!=self.sent:
-            self.process=subprocess.Popen([PLAYER,'volume',str(self.pending)],stdout=subprocess.DEVNULL)
+            command=MEDIA['control_command'](self.state,'volume',self.pending)
+            if not command: return
+            self.process=subprocess.Popen(command,stdout=subprocess.DEVNULL)
             self.sent=self.pending
 
 
@@ -102,7 +105,7 @@ def source_link(url, label):
     parsed = urllib.parse.urlsplit(str(url))
     host = (parsed.hostname or '').lower()
     if parsed.scheme != 'https' or not (host == 'shazam.com' or host.endswith('.shazam.com')
-                                      or host == 'en.wikipedia.org'):
+                                      or host in ('en.wikipedia.org', 'music.apple.com')):
         return ''
     return '<a target="_blank" rel="noopener noreferrer" href="' + html.escape(url, quote=True) + '">' + html.escape(label) + '</a>'
 
@@ -115,7 +118,7 @@ def song_details_html(details):
                    for label, value in facts.items() if value)
     body = '<section><h2>Song &amp; album</h2>'
     body += '<dl>' + rows + '</dl>' if rows else '<p class="muted">Album and release details are not available yet.</p>'
-    body += source_link(details.get('source', ''), 'Song details on Shazam') + '</section>'
+    body += source_link(details.get('source', ''), 'Song source') + '</section>'
     for item in details.get('background', []):
         body += ('<section><h2>' + html.escape(str(item.get('heading', 'Background'))) + '</h2><p>'
                  + html.escape(str(item.get('text', ''))) + '</p><small>'
@@ -183,6 +186,8 @@ def song_card(state, karaoke):
 SONG_WINDOW_MARKER = 'touchbar-song-info'
 SONG_WINDOW_UNIT = 'touchbar-song-window.service'
 _song_launch_at = -100.0
+_song_pending_workspace = None
+_song_poll_at = 0.0
 
 
 def song_windows():
@@ -192,13 +197,47 @@ def song_windows():
             if SONG_WINDOW_MARKER in w.get('class', '')]
 
 
+
+def show_song_window(window, workspace):
+    target = json.dumps('address:' + window['address'])
+    destination = json.dumps(str(workspace))
+    commands = [
+        'hl.dsp.window.move({window=' + target + ',workspace=' + destination + ',follow=false})',
+        'hl.dsp.window.float({window=' + target + ',action="on"})',
+        'hl.dsp.window.resize({window=' + target + ',x=560,y=740,relative=false})',
+        'hl.dsp.focus({window=' + target + '})',
+        'hl.dsp.window.center({window=' + target + '})',
+    ]
+    subprocess.run(['hyprctl', 'eval', '; '.join('hl.dispatch(' + c + ')' for c in commands)],
+                   stdout=subprocess.DEVNULL, check=True, timeout=2)
+
+
+def finish_song_launch(now):
+    # Chromium maps asynchronously. Poll without blocking gesture handling.
+    global _song_pending_workspace, _song_poll_at
+    if _song_pending_workspace is None or now < _song_poll_at:
+        return
+    _song_poll_at = now + 0.25
+    if now - _song_launch_at > 10:
+        _song_pending_workspace = None
+        logging.warning('Song information window did not appear within 10 seconds')
+        return
+    try:
+        windows = song_windows()
+        if windows:
+            show_song_window(windows[0], _song_pending_workspace)
+            _song_pending_workspace = None
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        logging.exception('Could not bring song information forward')
+
+
 def refresh_song_page():
     path = Path(os.environ['XDG_RUNTIME_DIR']) / 'touchbar-karaoke.json'
     page = path.with_name('touchbar-song-info.html')
     if not page.exists():
         return
     try:
-        content = song_card(json.loads(STATUS.read_text()), json.loads(path.read_text()))
+        content = song_card(MEDIA['current_state'](), json.loads(path.read_text()))
         if page.read_text() != content:
             temp = page.with_suffix('.tmp')
             temp.write_text(content)
@@ -209,9 +248,9 @@ def refresh_song_page():
 
 
 def open_song_info():
-    global _song_launch_at
+    global _song_launch_at, _song_pending_workspace
     try:
-        state = json.loads(STATUS.read_text())
+        state = MEDIA['current_state']()
         path = Path(os.environ['XDG_RUNTIME_DIR']) / 'touchbar-karaoke.json'
         try:
             karaoke = json.loads(path.read_text())
@@ -222,12 +261,13 @@ def open_song_info():
         temp.write_text(song_card(state, karaoke))
         temp.chmod(0o600)
         temp.replace(page)
+        workspace = json.loads(subprocess.run(
+            ['hyprctl', 'activeworkspace', '-j'], capture_output=True,
+            text=True, check=True, timeout=2).stdout)['id']
         windows = song_windows()
         if windows:
-            subprocess.run(['hyprctl', 'eval',
-                            'hl.dispatch(hl.dsp.focus({window=' +
-                            json.dumps('address:' + windows[0]['address']) + '}))'],
-                           stdout=subprocess.DEVNULL, check=True, timeout=2)
+            show_song_window(windows[0], workspace)
+            _song_pending_workspace = None
             return
         # Chromium hands off to an existing browser process; its launcher PID
         # cannot tell us whether the app window is still open.
@@ -249,6 +289,7 @@ def open_song_info():
         # The fixed unit name also prevents concurrent starts and duplicate
         # launches across gesture-service restarts while the window opens.
         _song_launch_at = time.monotonic()
+        _song_pending_workspace = workspace
     except (OSError, ValueError, TypeError, subprocess.SubprocessError):
         logging.exception('Could not open song information')
 
@@ -268,6 +309,7 @@ def main():
     next_song_page=0
     while True:
         now=time.monotonic()
+        finish_song_launch(now)
         if now >= next_song_page:
             next_song_page = now + 3
             refresh_song_page()
@@ -342,15 +384,19 @@ def main():
                         if gesture is None:
                             gesture=Gesture(pos['x'],pos['y'],now)
                             gesture.armed=left<=pos['x']<=right and .1*height<=pos['y']<=.9*height and now-blocked_at>.08
-                            gesture.base_volume=current_volume()
+                            gesture.media_state=MEDIA['current_state']()
+                            gesture.base_volume=max(0,min(100,float(gesture.media_state.get('volume',70))))
+                            output.state=gesture.media_state
                             output.sent=None
+                            output.pending=None
                             pending_arm=0
                         else: gesture.move(pos['x'],pos['y'])
                     elif gesture is not None:
                         action=gesture.action(now)
                         if action and action[0]=='tap':
-                            subprocess.Popen(['omarchy-shell','shell','toggle','akshar.radio-atlas'],stdout=subprocess.DEVNULL)
-                            logging.warning('Radio panel tap: toggle')
+                            command=MEDIA['control_command'](gesture.media_state,'open') if gesture.media_state else []
+                            if command: subprocess.Popen(command,stdout=subprocess.DEVNULL)
+                            logging.warning('Media panel tap: %s',gesture.media_state.get('source'))
                         elif gesture.armed and not gesture.cancelled and gesture.distance>=25:
                             dx=gesture.x-gesture.start
                             target=volume_for_swipe(gesture.base_volume,dx) if abs(dx)>=25 else gesture.base_volume

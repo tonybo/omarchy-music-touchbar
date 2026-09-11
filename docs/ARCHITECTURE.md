@@ -2,10 +2,14 @@
 
 ```mermaid
 flowchart LR
-  A[Radio Atlas status] --> F[User metadata feed]
+  A[Radio Atlas status] --> P[Active player selector]
+  C[Apple Music / MusicKit / MPRIS] --> P
+  P --> F[User metadata feed]
+  P --> G
+  P --> K[Lyrics worker]
   T[Touch Bar digitizer] --> G[User gesture controller]
   T --> F
-  G --> V[Radio Atlas volume command]
+  G --> V[Selected app control]
   G --> M[Transient volume feedback]
   M --> F
   F --> J[Bounded metadata JSON]
@@ -16,7 +20,10 @@ flowchart LR
 
 ## Process boundaries
 
-`src/gestures.py` runs as the desktop user. It reads only the Touch Bar digitizer and tiny-dfr virtual keyboard, without grabbing either. It invokes Radio Atlas commands with argument arrays, never shell-evaluated metadata. On a swipe it coalesces volume updates so only one player command runs at a time; the most recent target wins.
+`src/media.py` publishes the shared, expiring source snapshot. The Apple adapter binds to the dedicated browser PID, reads its MPRIS state, and copies bounded Chromium artwork from `/tmp` into the user runtime directory for the sandboxed lyrics worker. The selector has read-only system/home access and runtime-directory writes; it does not capture audio. Radio-only installs disable the Apple adapter.
+
+
+`src/gestures.py` runs as the desktop user. It reads only the Touch Bar digitizer and tiny-dfr virtual keyboard, without grabbing either. It invokes source-specific player commands with argument arrays, never shell-evaluated metadata. On a swipe it coalesces volume updates so only one player command runs at a time; the most recent target wins.
 
 `src/feed.py` runs as the desktop user. It forwards a small allowlist of station, title, volume, and playback fields, plus touch state and transient visual feedback. It supplies a monotonic heartbeat so the renderer can clear stale data after the user session ends. A file lock prevents the renderer from reading a half-written metadata snapshot.
 
@@ -40,7 +47,7 @@ Writing only a new SVG is insufficient: tiny-dfr also needs a config notificatio
 
 ## Current boundaries
 
-- Radio Atlas is the only media source. General MPRIS support is a future extension.
+- Supported sources are Radio Atlas and the dedicated `melonamin.apple-music` browser. Arbitrary MPRIS players are not selected.
 - Tested hardware is a T2 2170 × 60 Touch Bar. Other display widths need physical validation.
 - The raw digitizer name is currently T2-specific.
 - The updater redraws through tiny-dfr's config reload mechanism, not a native animation API. The [optional tiny-dfr patch](FN-LAYER-FIX.md) preserves Fn layer selection during reloads. A future upstream image-refresh API would remove the full-config reload overhead.

@@ -22,6 +22,8 @@ def main():
         'feed': service_state('touchbar-radio-feed.service', user=True),
         'gestures': service_state('touchbar-radio-gestures.service', user=True),
         'karaoke': service_state('touchbar-radio-karaoke.service', user=True),
+        'media': service_state('touchbar-radio-media.service', user=True),
+        'appleMusic': (home / '.config/omarchy/plugins/melonamin.apple-music/extension/player-bridge.js').is_file(),
         'radioAtlas': (home / '.config/omarchy/plugins/akshar.radio-atlas/radio-player').is_file(),
         'hyprlandLua': (home / '.config/hypr/hyprland.lua').is_file(),
     }))

@@ -1,3 +1,21 @@
+# Upgrading to Music Touchbar v1.1.0
+
+Touch Bar Radio is now **Music Touchbar**. The repository is now `tonybo/omarchy-music-touchbar`; existing clones can update their origin with:
+
+```sh
+git remote set-url origin https://github.com/tonybo/omarchy-music-touchbar.git
+```
+
+The plugin ID remains `tonybo.touchbar-radio`. Service names, configuration paths, and installation manifests retain their old names intentionally. Do not rename these files or add a second copy of the plugin.
+
+For a packaged v1.0.0 installation, uninstall hardware support with the previous checkout first, then update the checkout and reinstall. The installer restores backed-up configuration and refuses removal if protected files were manually changed. Back up and reconcile those edits first. A plugin update alone does not replace installed hardware services.
+
+Enable `--with-apple-music` (or its setup-panel checkbox) to install the player-selection service with Apple support and back up/patch the user-owned Apple Music extension. Both players are supported together; Radio Atlas is optional when Apple support is enabled. Reuse your prepared karaoke environment and add the same karaoke/background/dictation options you used previously.
+
+Restart the dedicated Apple Music application after setup to load the clock correction. Its current queue may need to be selected again. The installer does not terminate your browser or play music automatically. See [Apple Music setup](APPLE-MUSIC.md).
+
+The author's live prototype already has the feature installed separately. Publishing this release does not reinstall or migrate that live system.
+
 # Upgrading to v1.0.0
 
 For a packaged 0.2.x installation, use the old checkout to uninstall hardware

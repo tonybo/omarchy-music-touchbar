@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "id": "tonybo.touchbar-radio",
-  "name": "Touch Bar Radio",
-  "version": "1.0.0",
+  "name": "Music Touchbar",
+  "version": "1.1.0",
   "author": "tonybo",
   "license": "MIT",
-  "description": "T2 Touch Bar radio controls with synchronized lyrics, album artwork, song details, and hardware setup.",
+  "description": "T2 Touch Bar controls for Radio Atlas and Apple Music, with automatic player switching, synchronized lyrics, artwork, and song details.",
   "kinds": [
     "overlay"
   ],

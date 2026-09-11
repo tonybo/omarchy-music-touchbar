@@ -6,7 +6,7 @@ import logging
 import os
 from pathlib import Path
 import time
-source=Path(os.environ['XDG_RUNTIME_DIR'])/'omarchy-radio-atlas/status.json'
+source=Path(os.environ['XDG_RUNTIME_DIR'])/'touchbar-media.json'
 target=Path('/var/lib/omarchy-touchbar-radio/status.json')
 def dictation_state():
     try:
@@ -98,9 +98,11 @@ def main():
                     raw=stream.read(65537)
                 data=json.loads(raw) if len(raw)<=65536 else {}
                 if not isinstance(data,dict): data={}
+                stamp=data.get('updated_at', 0)
+                if not isinstance(stamp, (int, float)) or not 0 <= time.monotonic()-stamp < 3: data={}
                 station=data.get('station') or {}
                 if not isinstance(station,dict): station={}
-                filtered={k:data.get(k) for k in ('running','paused','loaded','muted','volume','title','error')}
+                filtered={k:data.get(k) for k in ('running','paused','loaded','muted','volume','title','error','source')}
                 filtered['station']={'name':station.get('name','')}
             except (OSError,ValueError):
                 filtered={}

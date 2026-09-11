@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-labelledby="title description">
-  <title id="title">Touch Bar Radio</title>
+  <title id="title">Music Touchbar</title>
   <desc id="description">A little bar. A whole world of music.</desc>
   <defs>
     <linearGradient id="background" x2="1" y2="1">
@@ -14,10 +14,10 @@
   </defs>
   <rect width="1200" height="440" rx="24" fill="url(#background)"/>
   <g text-anchor="middle" font-family="Inter, Helvetica Neue, Arial, sans-serif">
-    <text x="600" y="86" fill="#98a8b5" font-size="15" font-weight="600" letter-spacing="4">TOUCH BAR RADIO</text>
+    <text x="600" y="86" fill="#98a8b5" font-size="15" font-weight="600" letter-spacing="4">MUSIC TOUCHBAR</text>
     <text x="600" y="183" fill="#f5f7fa" font-size="66" font-weight="600" letter-spacing="-2">A little bar.</text>
     <text x="600" y="262" fill="#a2eed4" font-size="66" font-weight="600" letter-spacing="-2">A whole world of music.</text>
-    <text x="600" y="332" fill="#98a8b5" font-size="19">Radio. Lyrics. A touch closer.</text>
+    <text x="600" y="332" fill="#98a8b5" font-size="19">Radio. Apple Music. A touch closer.</text>
   </g>
   <rect x="370" y="385" width="460" height="2" rx="1" fill="url(#accent)"/>
 </svg>

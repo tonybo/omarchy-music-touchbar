@@ -30,7 +30,7 @@ import urllib.request
 import wave
 
 RUNTIME = Path(os.environ.get('XDG_RUNTIME_DIR', '/run/user/' + str(os.getuid())))
-RADIO = RUNTIME / 'omarchy-radio-atlas/status.json'
+RADIO = RUNTIME / 'touchbar-media.json'
 OUT = RUNTIME / 'touchbar-karaoke.json'
 UI = RUNTIME / 'touchbar-karaoke-ui.json'
 MATCH_CONFIG = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'radio-touchbar/lyrics-matching.json'
@@ -38,7 +38,7 @@ ALIAS_CONFIG = MATCH_CONFIG.with_name('lyrics-aliases.json')
 MATCH_THRESHOLDS = {'strict': 1.0, 'balanced': 0.90, 'relaxed': 0.85}
 SONG_DETAILS = runpy.run_path(str(Path(__file__).with_name('song_details.py')))['details']
 CATALOG = runpy.run_path(str(Path(__file__).with_name('song_catalog.py')))
-UA = 'OmarchyTouchbarRadio/1.0 (https://github.com/tonybo/omarchy-touchbar-radio)'
+UA = 'MusicTouchbar/1.1 (https://github.com/tonybo/omarchy-music-touchbar)'
 
 
 def read_json(path, limit=65536):
@@ -244,6 +244,17 @@ class NetEaseRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def fetch(url, limit=2_000_000):
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme == 'file':
+        path = Path(urllib.parse.unquote(parsed.path))
+        if parsed.netloc or path.parent != RUNTIME or not re.fullmatch(r'touchbar-apple-art-[0-9a-f]{64}\.img', path.name):
+            raise ValueError('Untrusted artwork path')
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'rb') as source:
+            info = os.fstat(source.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_size > limit:
+                raise ValueError('Invalid artwork file')
+            return source.read(limit)
     if not url.startswith('https://'):
         raise ValueError('HTTPS required')
     headers = {'User-Agent': UA}
@@ -323,12 +334,18 @@ def netease_lyrics(row):
 
 @lyrics_cache
 def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
-                album_aliases=(), expected_duration=0, search_pairs=()):
+                album_aliases=(), expected_duration=0, search_pairs=(), strict_recording=False,
+                exact_title=False):
     artists = tuple(dict.fromkeys(v for a in (artist, *artist_aliases)
                                  for mixed in CATALOG['mixed_names'](a) for name in name_variants(mixed)
                                  for v in CATALOG['script_forms'](name)))[:12]
     titles = tuple(dict.fromkeys(v for t in (title, *aliases) for name in title_variants(t)
                                  for v in CATALOG['script_forms'](name)))[:8]
+    if exact_title:
+        # Apple provides the full title. Preserve edition/featured credits;
+        # only equivalent Traditional/Simplified script forms are accepted.
+        titles = tuple(CATALOG['script_forms'](title))
+        search_pairs = ()
     rows = []
     failures = 0
     pairs = tuple(dict.fromkeys(((artist, title),
@@ -395,7 +412,7 @@ def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
         # Never put another artist's lyrics on the display just because a title matches.
         rows = [r for r in rows if (artist_matches(str(r.get('artistName') or ''))
                                    or (allow_members and member_matches(r)))
-                and {normalize(v) for label in title_variants(r.get('trackName', ''))
+                and {normalize(v) for label in ((str(r.get('trackName', '')),) if exact_title else title_variants(r.get('trackName', '')))
                    for v in CATALOG['script_forms'](label)}
                 & {normalize(t) for t in titles}]
         # Searches can return the same recording; don't count it as extra support.
@@ -414,6 +431,8 @@ def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
                 # Repeated uploads of a video cut must not outvote the actual
                 # release identified by the audio recognizer.
                 rows = release_rows
+            elif strict_recording and not expected_duration:
+                return []
         def duration_support(row):
             duration = float(row.get('duration') or 0)
             return sum(abs(float(other.get('duration') or 0) - duration) <= 2 for other in rows)
@@ -687,6 +706,78 @@ def lookup(state, sample_seconds=8):
             'recognized_at': time.monotonic(), 'key': identity(state)}
 
 
+def apple_position(state, now):
+    try:
+        position = float(state['position'])
+        age = now - float(state['position_at'])
+        rate = float(state.get('rate', 1))
+        if not all(math.isfinite(v) for v in (position, age, rate)) or not 0 <= age < 3:
+            return None
+        return max(0, position + (min(age, .75) * rate if not state.get('paused') else 0))
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+class AppleLyricClock:
+    """Hold tiny backwards clock corrections at a lyric boundary.
+
+    MusicKit/Chromium can re-anchor the clock a few tenths behind its last
+    estimate. Do not let that re-display a phrase we just finished. A larger
+    backward jump is a seek; source/track changes and pauses reset the guard.
+    Holding (rather than advancing independently) also bounds buffering drift.
+    """
+    def __init__(self):
+        self.key = None
+        self.position = None
+
+    def update(self, state, now):
+        position = apple_position(state, now)
+        key = identity(state)
+        if position is None or state.get('paused') or state.get('source') != 'apple':
+            self.key, self.position = None, None
+            return position
+        if key == self.key and self.position is not None and 0 < self.position - position <= 1.0:
+            position = self.position
+        self.key, self.position = key, position
+        return position
+
+
+def lookup_apple(state):
+    """Use the player's recording identity and clock, without audio capture."""
+    artist, title = state.get('artist', ''), state.get('track_title', '')
+    album, duration = state.get('album', ''), state.get('duration', 0)
+    cover = cover_file = ''
+    try:
+        cover = thumbnail(state.get('artwork', ''))
+        cover_file = page_cover(state.get('artwork', ''))
+    except Exception:
+        logging.warning('Apple Music artwork unavailable', exc_info=True)
+    native = state.get('native_lyrics', '')
+    lines = parse_lrc(native)
+    plain, source, instrumental, failed = native, 'Apple Music' if native else '', False, False
+    if not lines:
+        try:
+            match = find_lyrics(artist, title, artist_aliases=configured_artist_aliases(artist),
+                                album=album, expected_duration=duration, strict_recording=True,
+                                exact_title=True)
+            lines, matched_duration, instrumental = match
+            if lines or not plain:
+                plain = getattr(match, 'plain', '')
+                source = getattr(match, 'source', 'LRCLIB') if lines or plain or instrumental else ''
+            duration = duration or matched_duration
+        except Exception:
+            logging.warning('Apple Music lyrics lookup unavailable', exc_info=True)
+            failed = True
+    track = {'title': title, 'subtitle': artist, 'sections': [
+        {'metadata': [{'title': 'Album', 'text': album}]}]}
+    details = dict(SONG_DETAILS(track), cover_file=cover_file)
+    logging.info('Apple Music: %s / %s; %d timed lines (%s)', artist, title, len(lines), source or 'unavailable')
+    return {'artist': artist, 'title': title, 'cover': cover, 'lines': lines,
+            'details': details, 'lyrics': ('\n'.join(text for _, text in lines) or plain)[:24000].splitlines(),
+            'lyrics_error': failed, 'lyrics_source': source, 'duration': duration,
+            'instrumental': instrumental, 'recognized_at': time.monotonic(), 'key': identity(state)}
+
+
 def lyrics_status(current):
     if current.get('lyrics_error'):
         return 'Song identified · lyrics lookup retrying…'
@@ -705,17 +796,25 @@ def publish(data):
 
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
-    executor = ThreadPoolExecutor(max_workers=1)
+    executor = ThreadPoolExecutor(max_workers=2)
     future = None; current = None; key = None; retry = 0; was_paused = False
     epoch = 0; pending_epoch = None; last_error = None
+    apple_clock = AppleLyricClock()
     while True:
         now = time.monotonic()
         state = read_json(RADIO)
         if not isinstance(state, dict): state = {}
+        stamp = state.get('updated_at', 0)
+        if not isinstance(stamp, (int, float)) or not 0 <= time.monotonic()-stamp < 3: state = {}
+        apple = state.get('source') == 'apple'
+        clock_position = apple_clock.update(state, now)
         active = state.get('running') is True and not state.get('error')
         paused = state.get('paused') is True
         new_key = identity(state)
-        if new_key != key or (was_paused and not paused) or not active:
+        if new_key != key or (was_paused and not paused and not apple) or not active:
+            if future is not None:
+                future.cancel()
+                future = None
             current = None; retry = now; key = new_key; epoch += 1; last_error = None
         was_paused = paused
         if future is not None and future.done():
@@ -731,23 +830,25 @@ def main():
                                   else 'Song not recognized · retrying…' if 'not recognized' in str(e)
                                   else 'Recognition unavailable · retrying…')
             future = None
-            retry = now + (35 if current else 20)
+            retry = now + ((60 if current.get('lyrics_error') else 300) if apple and current else (35 if current else 20))
         if active and not paused and state.get('loaded') is not False and now >= retry and future is None:
             pending_epoch = epoch
-            future = executor.submit(lookup, dict(state), 12 if last_error else 8)
-        artist, title = split_title(state.get('title', ''))
+            future = executor.submit(lookup_apple, dict(state)) if apple else executor.submit(lookup, dict(state), 12 if last_error else 8)
+        artist, title = (state.get('artist', ''), state.get('track_title', '')) if apple else split_title(state.get('title', ''))
         data = {'active': active, 'paused': paused, 'key': key, 'updated_at': now,
                 'artist': artist, 'title': title, 'cover': '', 'status': 'paused' if paused else 'syncing',
-                'line': 'Paused' if paused else (last_error or 'Finding song timing…'), 'next': '', 'progress': 0}
+                'line': 'Paused' if paused else (last_error or ('Finding matching lyrics…' if apple else 'Finding song timing…')), 'next': '', 'progress': 0}
         if current:
             data.update({k: current[k] for k in ('artist', 'title', 'cover', 'lyrics', 'details', 'lyrics_source')})
-            position = now - current['anchor']
+            position = clock_position if apple else now - current['anchor']
             if paused:
                 pass
-            elif position > current['duration'] + 5 and current['duration']:
+            elif position is not None and position > current['duration'] + 5 and current['duration']:
                 data.update(status='syncing', line='Waiting for the next song…')
-            elif now - current['recognized_at'] > 100:
+            elif not apple and now - current['recognized_at'] > 100:
                 data.update(status='syncing', line='Resynchronizing…')
+            elif apple and position is None:
+                data.update(status='syncing', line='Waiting for playback timing…')
             elif current['lines']:
                 data.update(lyric_frame(current['lines'], position), status='synced', position=position)
             else:

@@ -11,7 +11,7 @@ import unicodedata
 import urllib.parse
 import urllib.request
 
-UA = 'OmarchyTouchbarRadio/1.0 (https://github.com/tonybo/omarchy-touchbar-radio)'
+UA = 'MusicTouchbar/1.1 (https://github.com/tonybo/omarchy-music-touchbar)'
 STORES = ('us', 'tw', 'jp', 'cn')
 
 

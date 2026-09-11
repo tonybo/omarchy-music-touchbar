@@ -207,33 +207,8 @@ class KaraokeTests(unittest.TestCase):
             page = g.song_card(state, {'key': ['s', state['title']], 'updated_at': 9, 'lyrics': ['A & B']})
         self.assertIn('A &amp; B', page)
 
-    def test_song_taps_reuse_window_and_launch_isolated_managed_browser(self):
-        with tempfile.TemporaryDirectory() as directory:
-            status = Path(directory) / 'status.json'
-            status.write_text(json.dumps({'title': 'Artist - Song'}))
-            with patch.object(g, 'STATUS', status), patch.dict(g.os.environ, {'XDG_RUNTIME_DIR': directory}), patch.object(g, 'song_windows', return_value=[]) as windows, patch.object(g.subprocess, 'run') as run, patch.object(g, '_song_launch_at', -100), patch.object(g.time, 'monotonic', return_value=20):
-                g.open_song_info()
-                args = run.call_args.args[0]
-                self.assertEqual(args[:2], ['systemd-run', '--user'])
-                self.assertIn('--unit=touchbar-song-window.service', args)
-                self.assertIn('--user-data-dir=' + directory + '/touchbar-song-browser', args)
-                self.assertIn('--app=' + (Path(directory) / 'touchbar-song-info.html').as_uri(), args)
-                g.open_song_info()
-                self.assertEqual(run.call_count, 1)
-                windows.return_value = [{'address': '0x123'}]
-                g.open_song_info()
-                self.assertEqual(run.call_count, 2)
-                self.assertEqual(run.call_args.args[0][:2], ['hyprctl', 'eval'])
-                self.assertIn('address:0x123', run.call_args.args[0][2])
-                self.assertIn('Artist', (Path(directory) / 'touchbar-song-info.html').read_text())
-
-    def test_window_query_failure_does_not_launch_another_browser(self):
-        with tempfile.TemporaryDirectory() as directory:
-            status = Path(directory) / 'status.json'
-            status.write_text('{}')
-            with patch.object(g, 'STATUS', status), patch.dict(g.os.environ, {'XDG_RUNTIME_DIR': directory}), patch.object(g, 'song_windows', side_effect=subprocess.TimeoutExpired('hyprctl', 2)), patch.object(g.subprocess, 'run') as run, self.assertLogs(level='ERROR'):
-                g.open_song_info()
-                run.assert_not_called()
+    # Workspace-aware popup and duplicate-launch coverage lives in
+    # test_song_controls.py; those tests also exercise the shared media state.
 
     def test_capture_refuses_ambiguous_or_unrelated_audio(self):
         inputs=[{'index':1,'sink':2,'properties':{'application.name':'mpv','media.name':'other - mpv'}}]
