@@ -277,7 +277,7 @@ def main():
     parser.add_argument('--user',default=os.environ.get('SUDO_USER',os.environ.get('USER')))
     parser.add_argument('--display-width',type=int)
     parser.add_argument('--with-dictation',action='store_true')
-    parser.add_argument('--with-karaoke',action='store_true', help='Enable Shazam audio recognition and LRCLIB lyrics')
+    parser.add_argument('--with-karaoke',action='store_true', help='Enable Shazam recognition with LRCLIB and NetEase lyric lookup')
     parser.add_argument('--with-background',action='store_true', help='Also look up artist/song/album names on Wikipedia')
     parser.add_argument('--karaoke-python', help='Path to a prepared Python 3.12 virtual environment interpreter')
     parser.add_argument('--dry-run',action='store_true')

@@ -60,6 +60,9 @@ In the setup panel, choose **Preview setup**, then **Install hardware support**.
 
 **Want live lyrics?** Follow the [lyrics and song-details setup](docs/GUIDE.md#enable-karaoke-and-song-details). It requires a separate Python 3.12 environment and optional recognition dependencies. [How recognition uses audio and online services →](docs/GUIDE.md#network-use-and-timing)
 
+**Chinese/Japanese lyric coverage:** LRCLIB is tried first, then NetEase. See the [NetEase login guide](docs/NETEASE.md) for phone verification, explicit browser-session import, private storage, expiry and removal. No account credentials belong in this checkout.
+
+
 Prefer the terminal? Use the [standalone installer](docs/GUIDE.md#standalone-installation).
 
 <sub>Developed and tested by hand on a T2 MacBook with a 2170 × 60 Touch Bar. The packaged installer has automated test coverage; installation on a second machine, Apple Silicon, and other Touch Bar hardware remain unvalidated.</sub>

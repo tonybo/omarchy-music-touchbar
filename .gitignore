@@ -5,3 +5,17 @@ __pycache__/
 *.bak.*
 
 .venv-karaoke/
+# Private provider sessions and accidental runtime/cache exports
+netease-session.json
+.netease-*
+*netease*cache*/
+*netease*cache*.json
+cookies.txt
+cookies.json
+Cookies
+Cookies-journal
+Cookies-wal
+Cookies-shm
+touchbar-karaoke.json
+touchbar-song-info.html
+omarchy-radio-atlas/

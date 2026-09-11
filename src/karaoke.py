@@ -11,7 +11,7 @@ import bisect
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 import io
-from functools import lru_cache
+from functools import lru_cache, wraps
 import json
 import logging
 import math
@@ -21,6 +21,7 @@ import re
 import runpy
 import select
 import socket
+import stat
 import subprocess
 import time
 import unicodedata
@@ -56,6 +57,47 @@ def identity(state):
 
 def normalize(text):
     return CATALOG['normalize'](text)
+
+
+def campaign_metadata(text):
+    # Ad servers sometimes leave their campaign identifier as ICY metadata.
+    # This is not an artist/title claim and must not veto audio recognition.
+    text = str(text)
+    return (text.count('_') >= 8 and bool(re.search(r'_[0-9]{5,}$', text))
+            and bool(re.search(r'(?:StreamingAudio|Marketplace|AllDevices)', text, re.I)))
+
+
+def title_variants(text):
+    # Explicit soundtrack annotations describe the release, not the song name.
+    clean = re.sub(r'\s*[（(](?=[^）)]*(?:主題曲|主题曲|片尾曲|片頭曲|片头曲|插曲|promotional song|theme song))[^）)]*[）)]$', '', str(text), flags=re.I).strip()
+    variants = list(dict.fromkeys(v for label in (str(text), clean)
+                                for mixed in CATALOG['mixed_names'](label)
+                                for v in name_variants(mixed)))
+    for value in tuple(variants):
+        # Remove mastering labels only; live/remix/acoustic/radio edits retain
+        # their identity, and the recording-duration check still applies.
+        base = re.sub(r'\s*(?:[-–—]\s*|[([])(?:[0-9]{4}\s+)?Remaster(?:ed)?(?:\s+[0-9]{4})?[)\]]?$', '', value, flags=re.I).strip()
+        if base and base != value:
+            variants.append(base)
+    return tuple(dict.fromkeys(variants))
+
+
+def lyrics_cache(function):
+    @lru_cache(maxsize=64)
+    def cached(window, *args, **kwargs):
+        return function(*args, **kwargs)
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        return cached(int(time.monotonic() // 120), *args, **kwargs)
+    wrapped.cache_clear = cached.cache_clear
+    return wrapped
+
+
+class LyricsMatch(tuple):
+    def __new__(cls, lines, duration, instrumental, plain=''):
+        result = super().__new__(cls, (lines, duration, instrumental))
+        result.plain = plain
+        return result
 
 
 def split_title(text):
@@ -111,6 +153,8 @@ def metadata_agrees(radio_title, artist, title, mode=None):
     Different writing systems are inconclusive, not proof of a wrong match.
     In that case the other field must still corroborate the recognition.
     """
+    if campaign_metadata(radio_title):
+        return True
     expected_artist, expected_title = split_title(radio_title)
     if not expected_artist or not expected_title:
         return True
@@ -169,25 +213,122 @@ def lyric_frame(lines, position):
             'progress': min(1, max(0, (position-start) / max(.1, end-start)))}
 
 
+NETEASE_SESSION = Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state'))) / 'radio-touchbar/netease-session.json'
+
+
+def netease_cookie_header():
+    # User-imported session only: never read the browser or store credentials
+    # in source/config shipped by the project.
+    try:
+        fd = os.open(NETEASE_SESSION, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd, 'rb') as f:
+            info = os.fstat(f.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 or info.st_size > 16384:
+                return ''
+            data = json.loads(f.read(16385))
+        if not isinstance(data, dict):
+            return ''
+        return '; '.join(name + '=' + data[name] for name in ('MUSIC_U', '__csrf')
+                         if isinstance(data.get(name), str) and data[name]
+                         and re.fullmatch(r'[!-:<>-~]+', data[name]))
+    except (OSError, ValueError):
+        return ''
+
+
+class NetEaseRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urllib.parse.urlsplit(newurl)
+        if target.scheme != 'https' or target.hostname != 'music.163.com' or target.port not in (None, 443):
+            raise ValueError('Unexpected NetEase redirect')
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def fetch(url, limit=2_000_000):
     if not url.startswith('https://'):
         raise ValueError('HTTPS required')
-    with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': UA}), timeout=12) as f:
+    headers = {'User-Agent': UA}
+    parsed = urllib.parse.urlsplit(url)
+    opener = urllib.request.urlopen
+    if parsed.hostname == 'music.163.com' and parsed.port in (None, 443):
+        cookie = netease_cookie_header()
+        if cookie:
+            headers['Cookie'] = cookie
+        headers['Referer'] = 'https://music.163.com/'
+        opener = urllib.request.build_opener(NetEaseRedirect()).open
+    with opener(urllib.request.Request(url, headers=headers), timeout=12) as f:
         raw = f.read(limit + 1)
     if len(raw) > limit:
         raise ValueError('Response too large')
     return raw
 
 
-@lru_cache(maxsize=64)
+_netease_retry_after = 0.0
+
+
+def netease_json(endpoint, params):
+    global _netease_retry_after
+    if time.monotonic() < _netease_retry_after:
+        raise ValueError('NetEase search temporarily unavailable')
+    data = json.loads(fetch('https://music.163.com/api/' + endpoint + '?' + urllib.parse.urlencode(params)))
+    if not isinstance(data, dict) or data.get('code') != 200:
+        # Do not replay someone else's cookies or hammer an account restriction.
+        _netease_retry_after = time.monotonic() + 300
+        code = data.get('code') if isinstance(data, dict) else 'invalid response'
+        logging.warning('NetEase unavailable (code %s); retrying after five minutes', code)
+        raise ValueError('NetEase lookup unavailable')
+    return data
+
+
+def netease_candidates(pairs):
+    # Native catalogue names first; keep requests small and bounded.
+    queries = sorted(dict.fromkeys(pairs), key=lambda pair: not any(ord(c) > 127 for c in ' '.join(pair)))[:3]
+    rows = []
+    for artist, title in queries:
+        data = netease_json('search/pc', {'s': artist + ' ' + title, 'type': 1, 'limit': 10, 'offset': 0})
+        songs = (data.get('result') or {}).get('songs') or []
+        if not isinstance(songs, list):
+            raise ValueError('Invalid NetEase search response')
+        for song in songs[:10]:
+            if not isinstance(song, dict):
+                continue
+            try:
+                identifier = int(song['id'])
+                duration = float(song['duration']) / 1000
+                names = [a['name'] for a in song['artists'] if isinstance(a, dict) and isinstance(a.get('name'), str)]
+                title = song['name']
+                if identifier <= 0 or not names or not isinstance(title, str) or not math.isfinite(duration) or not 0 < duration < 7200:
+                    continue
+            except (KeyError, TypeError, ValueError):
+                continue
+            rows.append({'id': identifier, 'artistName': ', '.join(names), 'trackName': title,
+                         'albumName': (song.get('album') or {}).get('name', ''),
+                         'duration': duration, 'source': 'NetEase'})
+    return rows
+
+
+def netease_lyrics(row):
+    data = netease_json('song/lyric', {'id': row['id'], 'lv': 1})
+    text = (data.get('lrc') or {}).get('lyric') or ''
+    if not isinstance(text, str) or len(text) > 100000:
+        raise ValueError('Invalid NetEase lyrics response')
+    lines = parse_lrc(text)
+    # An empty response is not proof the recording is instrumental.
+    result = LyricsMatch(lines, row['duration'], data.get('nolyric') is True,
+                         '' if lines else text)
+    result.source = 'NetEase'
+    return result
+
+
+@lyrics_cache
 def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
                 album_aliases=(), expected_duration=0, search_pairs=()):
     artists = tuple(dict.fromkeys(v for a in (artist, *artist_aliases)
                                  for mixed in CATALOG['mixed_names'](a) for v in name_variants(mixed)))[:12]
-    titles = tuple(dict.fromkeys(v for t in (title, *aliases) for v in name_variants(t)))[:8]
+    titles = tuple(dict.fromkeys(v for t in (title, *aliases) for v in title_variants(t)))[:8]
     rows = []
     failures = 0
-    pairs = tuple(dict.fromkeys(((artist, title), *search_pairs,
+    pairs = tuple(dict.fromkeys(((artist, title),
+                                *((a, t) for a, label in search_pairs for t in title_variants(label)),
                                 *((a, t) for a in artists for t in titles))))[:12]
     def search(pair):
         alternate_artist, alternate_title = pair
@@ -216,7 +357,7 @@ def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
     def artist_matches(value):
         def primary_matches(name):
             return any(normalize(v) == normalize(a) or artist_key(v) == artist_key(a)
-                       for v in name_variants(name) for a in artists)
+                       for mixed in CATALOG['mixed_names'](name) for v in name_variants(mixed) for a in artists)
         if primary_matches(value):
             return True
         # A credited guest may be stored in artistName instead of trackName.
@@ -224,44 +365,68 @@ def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
         credits = re.split(r'\s*(?:,|&|、|\bfeat\.?\s|\bft\.?\s|\bfeaturing\s)\s*', value, flags=re.I)
         return (len(credits) > 1 and primary_matches(credits[0])
                 and all(normalize(guest) in features for guest in credits[1:]))
-    # Never put another artist's lyrics on the display just because a title matches.
-    rows = [r for r in rows if artist_matches(str(r.get('artistName') or ''))
-            and {normalize(v) for v in name_variants(r.get('trackName', ''))}
-            & {normalize(t) for t in titles}]
-    # Searches can return the same recording; don't count it as extra support.
-    rows = list({json.dumps(r, sort_keys=True): r for r in rows}.values())
-    rows = [r for r in rows if 'live' not in str(r.get('albumName', '')).casefold() or 'live' in title.casefold()]
-    if expected_duration:
-        def same_duration(row):
-            try:
-                return abs(float(row.get('duration') or 0) - expected_duration) <= 3
-            except (TypeError, ValueError):
-                return False
-        rows = [r for r in rows if same_duration(r)]
-    def album_key(value):
-        # Catalogues commonly append " - Single" or " - EP" to releases.
-        return normalize(re.sub(r'\s+[-–—]\s+(?:Single|EP)$', '', value, flags=re.I))
-    album_keys = {album_key(a) for a in (album, *album_aliases) if a}
-    if album_keys:
-        release_rows = [r for r in rows if album_key(str(r.get('albumName') or '')) in album_keys]
-        if release_rows:
-            # Repeated uploads of a video cut must not outvote the actual
-            # release identified by the audio recognizer.
-            rows = release_rows
-    def duration_support(row):
-        duration = float(row.get('duration') or 0)
-        return sum(abs(float(other.get('duration') or 0) - duration) <= 2 for other in rows)
-    supports = {r.get('id'): duration_support(r) for r in rows}
-    rows.sort(key=lambda r: (not bool(r.get('syncedLyrics')), -supports[r.get('id')], r.get('id', 0)))
+    def rank_candidates(rows):
+        # Never put another artist's lyrics on the display just because a title matches.
+        rows = [r for r in rows if artist_matches(str(r.get('artistName') or ''))
+                and {normalize(v) for v in title_variants(r.get('trackName', ''))}
+                & {normalize(t) for t in titles}]
+        # Searches can return the same recording; don't count it as extra support.
+        rows = list({json.dumps(r, sort_keys=True): r for r in rows}.values())
+        rows = [r for r in rows if 'live' not in str(r.get('albumName', '')).casefold() or 'live' in title.casefold()]
+        if expected_duration:
+            def same_duration(row):
+                try:
+                    return abs(float(row.get('duration') or 0) - expected_duration) <= 3
+                except (TypeError, ValueError):
+                    return False
+            rows = [r for r in rows if same_duration(r)]
+        def album_key(value):
+            # Catalogues commonly append " - Single" or " - EP" to releases.
+            return normalize(re.sub(r'\s+[-–—]\s+(?:Single|EP)$', '', value, flags=re.I))
+        album_keys = {album_key(a) for a in (album, *album_aliases) if a}
+        if album_keys:
+            release_rows = [r for r in rows if album_key(str(r.get('albumName') or '')) in album_keys]
+            if release_rows:
+                # Repeated uploads of a video cut must not outvote the actual
+                # release identified by the audio recognizer.
+                rows = release_rows
+        def duration_support(row):
+            duration = float(row.get('duration') or 0)
+            return sum(abs(float(other.get('duration') or 0) - duration) <= 2 for other in rows)
+        supports = {r.get('id'): duration_support(r) for r in rows}
+        rows.sort(key=lambda r: (not bool(r.get('syncedLyrics')), -supports[r.get('id')], r.get('id', 0)))
+        return rows
+
+    rows = rank_candidates(rows)
+    if not rows or not any(r.get('syncedLyrics') or r.get('instrumental') for r in rows):
+        try:
+            candidates = rank_candidates(netease_candidates(pairs))
+            # Without duration or a known release, ambiguous recordings cannot
+            # safely share a lyric timing anchor.
+            if not expected_duration and len({round(r['duration']) for r in candidates}) > 1:
+                candidates = []
+            for candidate in candidates[:2]:
+                match = netease_lyrics(candidate)
+                if match[0] or (not rows and (match.plain or match[2])):
+                    logging.info('NetEase lyrics entry %s matched %s / %s (%ss)',
+                                 candidate['id'], artist, title, candidate['duration'])
+                    return match
+        except (OSError, ValueError, TypeError, AttributeError):
+            failures += 1
+            logging.warning('NetEase fallback unavailable')
     if not rows:
         if failures:
             # Exceptions are not cached, so transient failures can be retried.
             raise ValueError('Lyrics search temporarily unavailable')
         return [], 0, False
     row = rows[0]
+    if failures and not (row.get('syncedLyrics') or row.get('plainLyrics') or row.get('instrumental')):
+        raise ValueError('Lyrics search temporarily unavailable')
     logging.info('Lyrics entry %s: %s / %s, album %s, duration %ss',
                  row.get('id'), artist, title, row.get('albumName'), row.get('duration'))
-    return parse_lrc(row.get('syncedLyrics') or ''), float(row.get('duration') or 0), bool(row.get('instrumental'))
+    return LyricsMatch(parse_lrc(row.get('syncedLyrics') or ''),
+                       float(row.get('duration') or 0), bool(row.get('instrumental')),
+                       str(row.get('plainLyrics') or '')[:24000])
 
 
 @lru_cache(maxsize=32)
@@ -413,6 +578,9 @@ def lookup(state, sample_seconds=8):
     except Exception: logging.warning('Full-size artwork unavailable', exc_info=True)
     try: cover = thumbnail((track.get('images') or {}).get('coverart', ''))
     except Exception: logging.warning('Artwork unavailable', exc_info=True)
+    lyrics_error = False
+    lyrics_source = ''
+    plain_lyrics = ''
     try:
         # Shazam can translate its display title while retaining the native
         # song title in the canonical URL (e.g. Tik Tok -> 倒數).
@@ -423,25 +591,40 @@ def lookup(state, sample_seconds=8):
         # These variants are usable only after metadata_agrees above has
         # corroborated this fingerprint against the station's current song.
         aliases = tuple(dict.fromkeys((*catalog.get('titles', ()), *aliases,
-                                      *((radio_title,) if radio_artist else ()))))
+                                      *((radio_title,) if radio_artist and not campaign_metadata(state.get('title', '')) else ()))))
         artist_aliases = tuple(dict.fromkeys((
             *catalog.get('artists', ()), *configured_artist_aliases(artist),
-            *((radio_artist,) if radio_artist else ()))))
+            *((radio_artist,) if radio_artist and not campaign_metadata(state.get('title', '')) else ()))))
         album = next((str(item.get('text') or '')
                       for section in track.get('sections', []) if section.get('type') == 'SONG'
                       for item in section.get('metadata', []) if item.get('title') == 'Album'), '')
-        lines, duration, instrumental = find_lyrics(
+        lyric_match = find_lyrics(
             artist, title, aliases, artist_aliases, album, catalog.get('albums', ()),
             catalog.get('duration', 0), catalog.get('pairs', ()))
+        lines, duration, instrumental = lyric_match
+        plain_lyrics = getattr(lyric_match, 'plain', '')
+        lyrics_source = getattr(lyric_match, 'source', 'LRCLIB') if lines or plain_lyrics or instrumental else ''
     except Exception:
         logging.warning('Lyrics lookup unavailable', exc_info=True)
         lines, duration, instrumental = [], 0, False
+        lyrics_error = True
     logging.info('Recognized %s / %s at %.2fs; %d timed lines', artist, title, offset, len(lines))
     return {'artist': artist, 'title': title, 'cover': cover, 'lines': lines,
             'details': dict(SONG_DETAILS(track), cover_file=cover_file),
-            'lyrics': '\n'.join(text for _, text in lines)[:4000].splitlines(),
+            'lyrics': ('\n'.join(text for _, text in lines) or plain_lyrics)[:24000].splitlines(),
+            'lyrics_error': lyrics_error, 'lyrics_source': lyrics_source,
             'anchor': captured - offset, 'duration': duration, 'instrumental': instrumental,
             'recognized_at': time.monotonic(), 'key': identity(state)}
+
+
+def lyrics_status(current):
+    if current.get('lyrics_error'):
+        return 'Song identified · lyrics lookup retrying…'
+    if current.get('instrumental'):
+        return 'Instrumental'
+    if current.get('lyrics'):
+        return 'Lyrics found · tap song info'
+    return 'Song identified · lyrics not in catalogue'
 
 
 def publish(data):
@@ -487,7 +670,7 @@ def main():
                 'artist': artist, 'title': title, 'cover': '', 'status': 'paused' if paused else 'syncing',
                 'line': 'Paused' if paused else (last_error or 'Finding song timing…'), 'next': '', 'progress': 0}
         if current:
-            data.update({k: current[k] for k in ('artist', 'title', 'cover', 'lyrics', 'details')})
+            data.update({k: current[k] for k in ('artist', 'title', 'cover', 'lyrics', 'details', 'lyrics_source')})
             position = now - current['anchor']
             if paused:
                 pass
@@ -498,7 +681,7 @@ def main():
             elif current['lines']:
                 data.update(lyric_frame(current['lines'], position), status='synced', position=position)
             else:
-                data.update(status='unavailable', line='Instrumental' if current['instrumental'] else 'No timed lyrics available')
+                data.update(status='unavailable', line=lyrics_status(current))
         if not active: data.update(status='idle', line='')
         publish(data)
         time.sleep(.1)

@@ -59,7 +59,7 @@ plugin and hardware renderer installation.
 ## Karaoke and song information
 
 The opt-in Python 3.12 worker identifies the Radio Atlas stream by PipeWire serial,
-captures only that sink input, and uses ShazamIO and LRCLIB for recognition and
+captures only that sink input, and uses ShazamIO for recognition and LRCLIB, then NetEase, for
 line timing. Results are rejected when they contradict station metadata. Native
 song-link titles supplement translated titles during lyric lookup. A worker
 thread handles network work; publication continues every 100 ms.
@@ -79,3 +79,12 @@ All SVG icons are published by atomic rename before the existing config inode
 is updated. This prevents tiny-dfr from opening an empty or partial SVG during
 animation. Long cover-box text uses the same measured scrolling logic as the
 standard panel, with separate clips and a reset on song identity changes.
+
+## Private NetEase session
+
+`tools/netease_login.py` is an optional, explicitly invoked desktop-user utility.
+Only it reads selected-browser NetEase cookies. The worker reads a restricted
+`$XDG_STATE_HOME/radio-touchbar/netease-session.json` file, or the standard
+`~/.local/state` fallback, and sends its allowlisted session values only to NetEase.
+It does not log or forward them to the renderer. This state is never packaged.
+See [setup, expiry and removal](NETEASE.md).

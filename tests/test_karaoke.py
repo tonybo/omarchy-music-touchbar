@@ -20,6 +20,9 @@ k=load('karaoke'); r=load('renderer'); g=load('gestures')
 class KaraokeTests(unittest.TestCase):
     def setUp(self):
         k.find_lyrics.cache_clear()
+        provider = patch.object(k, 'netease_candidates', return_value=[])
+        provider.start()
+        self.addCleanup(provider.stop)
 
     def test_verified_artist_aliases_are_bounded_and_ignore_invalid_config(self):
         with tempfile.TemporaryDirectory() as td, patch.object(k, 'ALIAS_CONFIG', Path(td) / 'aliases.json'):

@@ -113,3 +113,21 @@ Two independent metadata corrections accompany the investigation:
 
 The keep-awake support requires rebuilding the optional tiny-dfr binary with the
 updated build helper. Python source changes alone cannot alter daemon idle behavior.
+
+## Provider fallback and search status
+
+LRCLIB runs first. NetEase is a fallback for missing synchronized lyrics, with
+shared artist/title/duration checks. See [NetEase setup](NETEASE.md) for the full
+login and local-session import process. Anonymous requests may be restricted;
+that is an access error, not evidence that a song has no lyrics.
+
+Title matching handles explicit bilingual names, remaster labels, and soundtrack
+annotations. Live/remix/acoustic identities and recording-duration checks remain.
+Recognizable stale ad campaign identifiers no longer veto an audio fingerprint.
+Empty search results expire after two minutes; failed requests are retried.
+
+The panel distinguishes “Song identified · lyrics lookup retrying…” from
+“Song identified · lyrics not in catalogue”. Plain lyrics appear in the song-info
+card with “Lyrics found · tap song info”; no timing is invented for plain text.
+A successful LRCLIB result means NetEase is not queried, even if some alternate
+LRCLIB search requests failed.

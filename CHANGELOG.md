@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added
+
+- NetEase fallback after LRCLIB, with shared artist/title/duration validation,
+  provider attribution and a cooldown for restricted requests.
+- Explicit NetEase browser-session importer with private storage outside Git,
+  credential-origin restrictions, and a [complete login guide](docs/NETEASE.md).
+- Plain lyric text in the song card when synchronized lyrics are unavailable.
+
+### Matching and lookup recovery
+
+- Match bilingual soundtrack titles and remaster labels without relaxing artist
+  or recording-duration validation; ignore recognizable stale ad campaign tags.
+- Expire cached empty lookups and distinguish service failures from absent lyrics.
+
 ### Fixed
 
 - Resolve native Chinese/Japanese names automatically using the recognized Apple
@@ -19,7 +33,7 @@
 - Add optional tiny-dfr keep-awake support while synchronized lyrics are visible.
 
 See [lyric display notes](docs/LYRIC-DISPLAY.md) for matching settings, limitations,
-and the optional daemon rebuild. These changes pass 79 Python tests; live catalogue checks verified Mandarin and
+and the optional daemon rebuild. Earlier multilingual changes passed 79 Python tests; live catalogue checks verified Mandarin and
 Japanese aliases, Qiu Feng Ze lyric retrieval, and the corrected Sweet Baby release
 selection.
 

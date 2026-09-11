@@ -232,11 +232,18 @@ attribution appear beside the information. The page follows new recognition data
 Repeated taps focus the same window. A dedicated Chromium profile and named user
 service prevent profile-conflict dialogs and simultaneous launches.
 
+### NetEase fallback login
+
+Follow the [NetEase login and private-session guide](NETEASE.md). Browser login
+alone does not authenticate the worker: explicitly import only the NetEase
+session, then restart the installed karaoke unit. Credentials remain outside
+the checkout; the worker never reads browser cookies automatically.
+
 ### Network use and timing
 
 The worker captures eight seconds (twelve after a failed attempt) from the uniquely matched Radio Atlas audio
 stream, never a microphone or the unrestricted system mix. ShazamIO derives an
-audio fingerprint for Shazam recognition. Artist and song names go to LRCLIB;
+audio fingerprint for Shazam recognition. Artist and song names go to LRCLIB and, when needed, NetEase;
 the recognized Apple song ID goes to Apple's US, Taiwan, Japan, and China
 catalogues for localized names and recording duration. These requests are cached.
 `--with-background` additionally sends artist, song and album names to Wikipedia.
@@ -244,7 +251,7 @@ Artwork is fetched from the recognized track's image provider. Audio is not save
 to disk. Covers are cached under the session runtime directory with a 64-file
 limit; lyric and background lookups are cached in memory.
 
-Recognition supplies the song position, while LRCLIB supplies line timestamps.
+Recognition supplies the song position, while LRCLIB or NetEase supplies line timestamps.
 The highlight sweep is a visual aid, not word-level alignment. PipeWire's reported
 AirPlay receiver delay is accounted for, but different recordings, source timing
 and receiver delays can still affect synchronization. Metadata arrival and elapsed
