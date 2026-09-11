@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/touchbar-radio-icon.png" alt="Touch Bar Radio icon: a mint waveform and play button in dark glass" width="144" height="144">
+  <img src="assets/touchbar-radio-icon.png" alt="Touch Bar Radio icon: a musical note above highlighted lyrics and a next-line preview" width="144" height="144">
 </p>
 
 <p align="center">
