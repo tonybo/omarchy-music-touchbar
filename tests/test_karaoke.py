@@ -21,6 +21,16 @@ class KaraokeTests(unittest.TestCase):
     def setUp(self):
         k.find_lyrics.cache_clear()
 
+    def test_verified_artist_aliases_are_bounded_and_ignore_invalid_config(self):
+        with tempfile.TemporaryDirectory() as td, patch.object(k, 'ALIAS_CONFIG', Path(td) / 'aliases.json'):
+            self.assertEqual(k.configured_artist_aliases('Jeff Chang'), ())
+            k.ALIAS_CONFIG.write_text(json.dumps({'artists': {'Jeff Chang': ['張信哲', '张信哲']}}))
+            self.assertEqual(k.configured_artist_aliases('Jeff Chang'), ('張信哲', '张信哲'))
+            self.assertEqual(k.configured_artist_aliases('Other Artist'), ())
+            for value in ('[]', '{"artists": []}', '{"artists": {"Jeff Chang": "bad"}}'):
+                k.ALIAS_CONFIG.write_text(value)
+                self.assertEqual(k.configured_artist_aliases('Jeff Chang'), ())
+
     def test_longer_recognition_sample_keeps_full_sample_for_timing(self):
         for seconds in (8, 12):
             recognizer = Mock()
@@ -79,6 +89,61 @@ class KaraokeTests(unittest.TestCase):
         with patch.object(k, 'fetch', return_value=json.dumps(rows).encode()):
             self.assertEqual(k.find_lyrics('MJ116', 'Sweet Baby', album='Sweet Baby - Single'),
                              ([(10.0, 'test')], 182, False))
+
+    def test_catalog_duration_excludes_wrong_cut_even_on_same_album(self):
+        rows = [
+            {'id': 1, 'artistName': 'Artist', 'trackName': 'Song', 'albumName': 'Album',
+             'duration': 243, 'syncedLyrics': '[00:40]wrong cut'},
+            {'id': 2, 'artistName': 'Artist', 'trackName': 'Song', 'albumName': 'Album',
+             'duration': 182, 'syncedLyrics': '[00:10]right cut'}]
+        with patch.object(k, 'fetch', return_value=json.dumps(rows).encode()):
+            self.assertEqual(k.find_lyrics('Artist', 'Song', album='Album', expected_duration=182.5),
+                             ([(10.0, 'right cut')], 182, False))
+            self.assertEqual(k.find_lyrics('Artist', 'Song', album='Album', expected_duration=300),
+                             ([], 0, False))
+
+    def test_featured_artist_in_title_can_be_stored_in_artist_field(self):
+        for artist in ('理想混蛋, 郁心', '理想混蛋 feat. 郁心'):
+            k.find_lyrics.cache_clear()
+            rows = [
+                {'id': 1, 'artistName': 'Other, 郁心', 'trackName': '太陽雨',
+                 'duration': 216, 'syncedLyrics': '[00:01]wrong main artist'},
+                {'id': 2, 'artistName': '理想混蛋, Other', 'trackName': '太陽雨',
+                 'duration': 216, 'syncedLyrics': '[00:01]wrong guest'},
+                {'id': 3, 'artistName': artist, 'trackName': '太陽雨',
+                 'duration': 216, 'syncedLyrics': '[00:01]match'}]
+            with patch.object(k, 'fetch', return_value=json.dumps(rows).encode()):
+                self.assertEqual(k.find_lyrics('Bestards', '太陽雨 (feat. 郁心)',
+                    artist_aliases=('理想混蛋',), expected_duration=216)[0], [(1.0, 'match')])
+
+    def test_catalog_pairs_get_native_names_without_manual_alias(self):
+        def search(url):
+            q = k.urllib.parse.parse_qs(k.urllib.parse.urlsplit(url).query)
+            if q == {'artist_name': ['張信哲'], 'track_name': ['就懂了']}:
+                return json.dumps([{'id': 1, 'artistName': '張信哲', 'trackName': '就懂了',
+                                    'albumName': '就懂了', 'duration': 261.5,
+                                    'syncedLyrics': '[00:10]test'}]).encode()
+            return b'[]'
+        with patch.object(k, 'fetch', side_effect=search):
+            lines, duration, _ = k.find_lyrics('Jeff Chang', 'See the Light', ('就懂了',),
+                ('張信哲',), 'See the Light', ('就懂了',), 261.485, (('張信哲', '就懂了'),))
+            self.assertEqual(lines, [(10.0, 'test')])
+
+    def test_lookup_resolves_names_before_rejecting_a_localized_artist(self):
+        identity = {'artists': ('Qiu Feng Ze', '邱鋒澤'), 'titles': ('Move on', '微笑分手'),
+                    'albums': ('微笑分手',), 'duration': 261.94,
+                    'pairs': (('邱鋒澤', '微笑分手'),)}
+        track = {'subtitle': '邱鋒澤 Feng Ze', 'title': 'Move on'}
+        recognizer = Mock()
+        recognizer.recognize = AsyncMock(return_value={'track': track, 'matches': [{'offset': 30}]})
+        with patch.dict('sys.modules', {'shazamio': types.SimpleNamespace(Shazam=Mock(return_value=recognizer))}), \
+                patch.dict(k.CATALOG, {'resolve': Mock(return_value=identity)}), \
+                patch.object(k, 'record_radio', return_value=(b'audio', 100)), \
+                patch.object(k, 'find_lyrics', return_value=([(10, 'test')], 261.94, False)) as lyrics:
+            result = k.lookup({'title': 'Qiu Feng Ze - Move On'})
+        self.assertEqual(result['anchor'], 70)
+        self.assertEqual(result['lines'], [(10, 'test')])
+        self.assertEqual(lyrics.call_args.args[-2:], (261.94, (('邱鋒澤', '微笑分手'),)))
 
     def test_failed_primary_search_does_not_block_native_alias(self):
         row = {'id': 1, 'artistName': 'EPO', 'trackName': '土曜の夜はパラダイス',

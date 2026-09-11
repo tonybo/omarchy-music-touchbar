@@ -2,13 +2,46 @@
 
 ## Multilingual recognition and lyrics
 
-Explicit bilingual metadata such as `EPO - 土曜の夜はパラダイス - Do You No
-Yoru Ha Paradise` now corroborates recognition of either title. After that
-check, lyrics searches use bounded sets of native and translated titles and
-artist names supplied by the station and recognizer. Japanese artist names
-can match in either given/family-name order. An alias search failure no longer
-discards successful searches, and transient failures without results are retried.
-These changes do not invent translations or accept unrelated artists by title alone.
+The worker resolves localized artist, title, and album names automatically from
+Apple's US, Taiwan, Japan, and mainland China catalogues. It uses the Apple song
+ID embedded in Shazam's recognition result: every accepted localized record must
+have that exact song ID, the same artist ID, and a consistent duration. No
+artist-specific list is needed for normal operation.
+
+For example, the same recording connects `Jeff Chang / See the Light` with
+`張信哲 / 就懂了`, and `Seiko Matsuda / Makkana Road Star` with
+`松田聖子 / 真っ赤なロードスター`. Mixed names such as `邱鋒澤 Feng Ze` are
+split into their native and Latin forms. ICU's optional `uconv` supplies pinyin
+or kana romanization for artist corroboration only when the song title also
+matches independently. ICU Han readings are Mandarin; Japanese kanji names rely
+on catalogue aliases, not guessed readings. Japanese voicing marks are preserved.
+
+Explicit bilingual station metadata is also recognized. The catalogue aliases
+can corroborate station metadata even when the recognizer uses a different
+language. Lyric searches prioritize the catalogue's native artist/title pairs,
+then try bounded combinations of the other verified names. Featured artists can
+be stored in either the title or artist field, provided every guest is explicitly
+credited by the recognized metadata. Artist checks remain
+mandatory, and a known recording duration excludes lyric versions more than
+three seconds away. A found lyric file does not guarantee every timestamp is
+accurate.
+
+There are at most four parallel catalogue requests, cached in five-minute
+windows (including errors), and twelve lyric queries with four workers. Catalogue
+requests time out after six seconds; missing IDs or unavailable catalogues fall
+back to the existing station/recognizer names. The worker does not guess an
+identity using a broad text search. Recognition can still fail, and some songs
+have no timed lyrics. Network operations stay off the display and gesture loops.
+
+Optional verified artist overrides remain supported in
+`~/.config/radio-touchbar/lyrics-aliases.json` (or under `$XDG_CONFIG_HOME`), as
+`{"artists": {"catalogue name": ["verified alternate name"]}}`. They supplement
+lyric searches and do not bypass audio recognition.
+
+The catalogue API and localization parameters are documented in Apple's
+[lookup examples](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/LookupExamples.html)
+and [search parameters](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html).
+Transliteration follows [ICU's transforms](https://unicode-org.github.io/icu/userguide/transforms/general/).
 
 Lyric versions now prefer the recognized album/release (ignoring catalogue
 suffixes ` - Single` and ` - EP`) before duration voting. For MJ116's `Sweet

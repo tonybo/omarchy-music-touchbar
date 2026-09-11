@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- Resolve native Chinese/Japanese names automatically using the recognized Apple
+  recording ID across regional catalogues, with duration checks for lyric versions.
+- Accept explicitly credited guest artists whether stored in the title or artist field.
+- Corroborate mixed native/Latin artist names and optional pinyin/kana forms
+  against the song title; preserve Japanese voicing marks during normalization.
 - Match explicit bilingual song titles and corroborated artist aliases, including
   Japanese artist-name ordering. Failed alias requests no longer discard other results.
 - Prefer the recognized release when selecting timed lyrics, preventing duplicate
@@ -14,8 +19,9 @@
 - Add optional tiny-dfr keep-awake support while synchronized lyrics are visible.
 
 See [lyric display notes](docs/LYRIC-DISPLAY.md) for matching settings, limitations,
-and the optional daemon rebuild. These changes pass 63 Python tests; live checks
-verified Chinese lyrics and the corrected Sweet Baby release selection.
+and the optional daemon rebuild. These changes pass 79 Python tests; live catalogue checks verified Mandarin and
+Japanese aliases, Qiu Feng Ze lyric retrieval, and the corrected Sweet Baby release
+selection.
 
 ## 1.0.0 — 2026-09-11
 

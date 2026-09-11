@@ -154,6 +154,7 @@ class ReleaseTests(unittest.TestCase):
                 worker = files[str(home/'.config/systemd/user/touchbar-radio-karaoke.service')]['data'].decode()
                 self.assertIn('Environment=TOUCHBAR_WIKIPEDIA=1', worker)
                 self.assertIn(str(base/'lib/song_details.py'), files)
+                self.assertIn(str(base/'lib/song_catalog.py'), files)
                 self.assertIn(str(base/'lib/karaoke.py'), files)
                 plain = i.plan(account, 2170, 60, False)
                 self.assertNotIn(str(home/'.config/systemd/user/touchbar-radio-karaoke.service'), plain)

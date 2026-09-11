@@ -46,6 +46,8 @@ The regular media panel and swipe-volume feedback remain available:
 - Python 3.11+, PyGObject, Pango, and PangoCairo.
 - systemd, `acl` (`setfacl`), and the normal Radio Atlas playback dependencies.
 - Optional: a working Voxtype installation for the dictation button.
+- Optional: ICU's `uconv` (`icu` on Arch, `icu-devtools` on Debian/Ubuntu) for
+  pinyin and kana artist-name corroboration. Catalogue aliases work without it.
 
 On Omarchy, install missing dependencies with:
 
@@ -253,6 +255,8 @@ blacklisted: vocal jazz can still have lyrics. Recognition retries use a small
 emoji animation. Native titles from Shazam's song links are checked alongside
 translated display titles, while artist checks reject unrelated results.
 Explicit bilingual radio titles and corroborated artist aliases are also searched.
+Native Chinese and Japanese artist, song, and album names are resolved automatically
+from regional Apple catalogues using the recording ID supplied by recognition.
 The recognized album is preferred when multiple lyric versions exist. See
 [matching and display troubleshooting](docs/LYRIC-DISPLAY.md) for details.
 
@@ -269,6 +273,8 @@ service prevent profile-conflict dialogs and simultaneous launches.
 The worker captures eight seconds (twelve after a failed attempt) from the uniquely matched Radio Atlas audio
 stream, never a microphone or the unrestricted system mix. ShazamIO derives an
 audio fingerprint for Shazam recognition. Artist and song names go to LRCLIB;
+the recognized Apple song ID goes to Apple's US, Taiwan, Japan, and China
+catalogues for localized names and recording duration. These requests are cached.
 `--with-background` additionally sends artist, song and album names to Wikipedia.
 Artwork is fetched from the recognized track's image provider. Audio is not saved
 to disk. Covers are cached under the session runtime directory with a 64-file

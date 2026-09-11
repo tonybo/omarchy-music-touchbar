@@ -33,8 +33,10 @@ RADIO = RUNTIME / 'omarchy-radio-atlas/status.json'
 OUT = RUNTIME / 'touchbar-karaoke.json'
 UI = RUNTIME / 'touchbar-karaoke-ui.json'
 MATCH_CONFIG = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'radio-touchbar/lyrics-matching.json'
+ALIAS_CONFIG = MATCH_CONFIG.with_name('lyrics-aliases.json')
 MATCH_THRESHOLDS = {'strict': 1.0, 'balanced': 0.90, 'relaxed': 0.85}
 SONG_DETAILS = runpy.run_path(str(Path(__file__).with_name('song_details.py')))['details']
+CATALOG = runpy.run_path(str(Path(__file__).with_name('song_catalog.py')))
 UA = 'OmarchyTouchbarRadio/1.0 (https://github.com/tonybo/omarchy-touchbar-radio)'
 
 
@@ -53,7 +55,7 @@ def identity(state):
 
 
 def normalize(text):
-    return ''.join(c for c in unicodedata.normalize('NFKD', text).casefold() if c.isalnum())
+    return CATALOG['normalize'](text)
 
 
 def split_title(text):
@@ -83,6 +85,18 @@ def name_variants(text):
 def artist_key(text):
     # Japanese artists are often catalogued in both given/family-name orders.
     return tuple(sorted(normalize(word) for word in text.split() if normalize(word)))
+
+
+def configured_artist_aliases(artist):
+    """Use explicitly verified artist aliases; never infer them from a title."""
+    data = read_json(ALIAS_CONFIG)
+    artists = data.get('artists', {}) if isinstance(data, dict) else {}
+    if not isinstance(artists, dict):
+        return ()
+    for name, aliases in artists.items():
+        if normalize(name) == normalize(artist) and isinstance(aliases, list):
+            return tuple(a for a in aliases if isinstance(a, str) and 0 < len(a) <= 120)[:2]
+    return ()
 
 
 def matching_mode():
@@ -166,36 +180,70 @@ def fetch(url, limit=2_000_000):
 
 
 @lru_cache(maxsize=64)
-def find_lyrics(artist, title, aliases=(), artist_aliases=(), album=''):
-    artists = tuple(dict.fromkeys(v for a in (artist, *artist_aliases) for v in name_variants(a)))[:3]
-    titles = tuple(dict.fromkeys(v for t in (title, *aliases) for v in name_variants(t)))[:4]
+def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
+                album_aliases=(), expected_duration=0, search_pairs=()):
+    artists = tuple(dict.fromkeys(v for a in (artist, *artist_aliases)
+                                 for mixed in CATALOG['mixed_names'](a) for v in name_variants(mixed)))[:12]
+    titles = tuple(dict.fromkeys(v for t in (title, *aliases) for v in name_variants(t)))[:8]
     rows = []
     failures = 0
-    for alternate_artist in artists:
-        for alternate_title in titles:
-            query = urllib.parse.urlencode({'artist_name': alternate_artist, 'track_name': alternate_title})
-            try:
-                result = json.loads(fetch('https://lrclib.net/api/search?' + query))
-                if not isinstance(result, list):
-                    raise ValueError('Invalid lyrics search response')
-                rows.extend(r for r in result if isinstance(r, dict))
-            except (OSError, ValueError):
-                failures += 1
-                logging.warning('Lyrics search failed for %s / %s', alternate_artist, alternate_title)
+    pairs = tuple(dict.fromkeys(((artist, title), *search_pairs,
+                                *((a, t) for a in artists for t in titles))))[:12]
+    def search(pair):
+        alternate_artist, alternate_title = pair
+        query = urllib.parse.urlencode({'artist_name': alternate_artist, 'track_name': alternate_title})
+        try:
+            result = json.loads(fetch('https://lrclib.net/api/search?' + query))
+            if not isinstance(result, list):
+                raise ValueError('Invalid lyrics search response')
+            return [r for r in result if isinstance(r, dict)], 0
+        except (OSError, ValueError):
+            logging.warning('Lyrics search failed for %s / %s', alternate_artist, alternate_title)
+            return [], 1
+    # Regional pairs are queried first. Bound both fan-out and waiting time;
+    # use the old sequential path for small lookups and deterministic retries.
+    if len(pairs) > 3:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(search, pairs))
+    else:
+        results = list(map(search, pairs))
+    for found, failed in results:
+        rows.extend(found)
+        failures += failed
+    features = {normalize(name) for t in titles
+                for credit in re.findall(r'(?:feat\.?|ft\.?|featuring)\s+([^\])）]+)', t, re.I)
+                for name in re.split(r'\s*(?:,|&|、|\band\b)\s*', credit, flags=re.I) if name.strip()}
+    def artist_matches(value):
+        def primary_matches(name):
+            return any(normalize(v) == normalize(a) or artist_key(v) == artist_key(a)
+                       for v in name_variants(name) for a in artists)
+        if primary_matches(value):
+            return True
+        # A credited guest may be stored in artistName instead of trackName.
+        # Require the primary artist AND every guest to be explicitly known.
+        credits = re.split(r'\s*(?:,|&|、|\bfeat\.?\s|\bft\.?\s|\bfeaturing\s)\s*', value, flags=re.I)
+        return (len(credits) > 1 and primary_matches(credits[0])
+                and all(normalize(guest) in features for guest in credits[1:]))
     # Never put another artist's lyrics on the display just because a title matches.
-    rows = [r for r in rows if any(
-            normalize(v) == normalize(a) or artist_key(v) == artist_key(a)
-            for v in name_variants(r.get('artistName', '')) for a in artists)
+    rows = [r for r in rows if artist_matches(str(r.get('artistName') or ''))
             and {normalize(v) for v in name_variants(r.get('trackName', ''))}
             & {normalize(t) for t in titles}]
     # Searches can return the same recording; don't count it as extra support.
     rows = list({json.dumps(r, sort_keys=True): r for r in rows}.values())
     rows = [r for r in rows if 'live' not in str(r.get('albumName', '')).casefold() or 'live' in title.casefold()]
+    if expected_duration:
+        def same_duration(row):
+            try:
+                return abs(float(row.get('duration') or 0) - expected_duration) <= 3
+            except (TypeError, ValueError):
+                return False
+        rows = [r for r in rows if same_duration(r)]
     def album_key(value):
         # Catalogues commonly append " - Single" or " - EP" to releases.
         return normalize(re.sub(r'\s+[-–—]\s+(?:Single|EP)$', '', value, flags=re.I))
-    if album_key(album):
-        release_rows = [r for r in rows if album_key(str(r.get('albumName') or '')) == album_key(album)]
+    album_keys = {album_key(a) for a in (album, *album_aliases) if a}
+    if album_keys:
+        release_rows = [r for r in rows if album_key(str(r.get('albumName') or '')) in album_keys]
         if release_rows:
             # Repeated uploads of a video cut must not outvote the actual
             # release identified by the audio recognizer.
@@ -350,7 +398,12 @@ def lookup(state, sample_seconds=8):
     if not math.isfinite(offset) or not 0 <= offset < 7200:
         raise ValueError('Recognition provided no usable song position')
     artist, title = track.get('subtitle', ''), track.get('title', '')
-    if not metadata_agrees(state.get('title', ''), artist, title):
+    catalog = CATALOG['resolve'](track)
+    radio_artist, radio_title = split_title(state.get('title', ''))
+    agrees = metadata_agrees(state.get('title', ''), artist, title)
+    if not agrees:
+        agrees = CATALOG['corroborates'](radio_artist, radio_title, artist, title, catalog)
+    if not agrees:
         logging.warning('Rejected conflicting match %s / %s; radio says %s',
                         artist, title, state.get('title', ''))
         raise ValueError('Song not recognized consistently with radio metadata')
@@ -369,12 +422,17 @@ def lookup(state, sample_seconds=8):
         radio_artist, radio_title = split_title(state.get('title', ''))
         # These variants are usable only after metadata_agrees above has
         # corroborated this fingerprint against the station's current song.
-        aliases = tuple(dict.fromkeys((*aliases, radio_title))) if radio_artist else aliases
-        artist_aliases = (radio_artist,) if radio_artist else ()
+        aliases = tuple(dict.fromkeys((*catalog.get('titles', ()), *aliases,
+                                      *((radio_title,) if radio_artist else ()))))
+        artist_aliases = tuple(dict.fromkeys((
+            *catalog.get('artists', ()), *configured_artist_aliases(artist),
+            *((radio_artist,) if radio_artist else ()))))
         album = next((str(item.get('text') or '')
                       for section in track.get('sections', []) if section.get('type') == 'SONG'
                       for item in section.get('metadata', []) if item.get('title') == 'Album'), '')
-        lines, duration, instrumental = find_lyrics(artist, title, aliases, artist_aliases, album)
+        lines, duration, instrumental = find_lyrics(
+            artist, title, aliases, artist_aliases, album, catalog.get('albums', ()),
+            catalog.get('duration', 0), catalog.get('pairs', ()))
     except Exception:
         logging.warning('Lyrics lookup unavailable', exc_info=True)
         lines, duration, instrumental = [], 0, False
