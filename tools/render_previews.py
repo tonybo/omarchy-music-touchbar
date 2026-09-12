@@ -30,7 +30,7 @@ preview = f'''<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3
 <image x="106" y="350" width="1068" height="57" xlink:href="data:image/svg+xml;base64,{encoded}"/>
 <text x="76" y="528" font-size="25" fill="#c4f5dc">Stereo bands · Four shades · Held peaks</text>
 <text x="76" y="576" font-size="24" fill="#aebdc8">Automatic lyrics fallback, artwork, song details and swipe volume.</text>
-<text x="76" y="646" font-size="20" fill="#78d6c1">v1.2.0 · Requires tiny-dfr and optional lyrics setup</text>
+<text x="76" y="646" font-size="20" fill="#78d6c1">v1.2.1 · Requires tiny-dfr and optional lyrics setup</text>
 <text x="76" y="682" font-size="16" fill="#748b98">Spectrum illustration with example levels. Real hardware capture in the README.</text>
 </g></svg>'''
 (root/'assets/marketplace-preview.svg').write_text(preview+'\n')

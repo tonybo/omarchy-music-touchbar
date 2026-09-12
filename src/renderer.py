@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import os
+import runpy
 from pathlib import Path
 import time
 import tomllib
@@ -238,8 +239,13 @@ def render_music_detective(elapsed, panel_width=900):
 </svg>'''
 
 
+STATUS_ICONS = runpy.run_path(str(Path(__file__).with_name('status_icons.py')))['ICONS']
+
+
 def spectrum_status(k):
     line = clean(k.get('line'), 600)
+    if k.get('status') == 'synced':
+        return '🎤', 'Synced lyrics ready'
     if 'retrying' in line.lower():
         return '🔄', 'Retrying'
     if k.get('status', 'syncing') == 'syncing':
@@ -263,7 +269,8 @@ def render_spectrum(k, panel_width=900):
              f'<rect width="{panel_width}" height="48" rx="6" fill="#060d12"/>']
     emoji, _ = spectrum_status(k)
     center = panel_width / 2
-    parts.append(f'<text x="{center:.1f}" y="31" text-anchor="middle" font-family="Noto Color Emoji" font-size="20" fill="#c4f5dc">{emoji}</text>')
+    name = {'🔍':'searching', '🔄':'retrying', '🎵':'unavailable', '📄':'plain', '🎹':'instrumental', '🎤':'synced'}[emoji]
+    parts.append(f'<image x="{round(center)-12}" y="12" width="24" height="24" href="data:image/png;base64,{STATUS_ICONS[name]}"/>')
     bank = (panel_width - 104) / 2
     step = bank / 15
     for channel in range(2):
@@ -289,7 +296,8 @@ def render_spectrum(k, panel_width=900):
 def render_lyrics(state, panel_width=900):
     k=state.get('karaoke') or {}
     status=k.get('status','syncing')
-    if status in ('syncing', 'unavailable') and not state.get('paused'):
+    view = k.get('view', 'spectrum' if status in ('syncing', 'unavailable') else 'lyrics')
+    if view == 'spectrum' and not state.get('paused'):
         return render_spectrum(k, panel_width)
     if status == 'syncing' and k.get('line') == 'Song not recognized · retrying…':
         return render_music_detective(time.monotonic(), panel_width)

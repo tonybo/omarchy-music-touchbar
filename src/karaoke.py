@@ -789,6 +789,13 @@ def lyrics_status(current):
     return 'No matching synced lyrics found'
 
 
+def panel_view(key, status):
+    options = read_json(UI)
+    if isinstance(options, dict) and options.get('view_key') == key and options.get('view') in ('lyrics', 'spectrum'):
+        return options['view']
+    return 'spectrum' if status in ('syncing', 'unavailable') else 'lyrics'
+
+
 def publish(data):
     temp = OUT.with_suffix('.tmp')
     temp.write_text(json.dumps(data, ensure_ascii=True))
@@ -856,7 +863,8 @@ def main():
             else:
                 data.update(status='unavailable', line=lyrics_status(current))
         if not active: data.update(status='idle', line='')
-        data['spectrum'] = spectrum.update(state, active and not paused and data['status'] in ('syncing', 'unavailable'))
+        data['view'] = panel_view(key, data['status'])
+        data['spectrum'] = spectrum.update(state, active and not paused and data['view'] == 'spectrum')
         publish(data)
         time.sleep(.1)
 

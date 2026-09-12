@@ -171,7 +171,7 @@ class KaraokeTests(unittest.TestCase):
     def test_metadata_does_not_invent_position(self):
         self.assertEqual(k.split_title('Artist - Title'),('Artist','Title'))
         svg=r.render_lyrics({'running':True,'title':'Artist - Title'})
-        self.assertIn('🔍',svg)
+        self.assertIn('data:image/png;base64,',svg)
     def test_lyrics_cannot_change_svg_markup(self):
         svg=r.render_lyrics({'karaoke':{'line':'<script>&','next':'"x"','progress':float('nan')}})
         ET.fromstring(svg)

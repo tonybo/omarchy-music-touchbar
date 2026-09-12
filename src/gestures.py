@@ -82,6 +82,43 @@ def panel_bounds(width=2170):
         start+=span
     return -1, -1  # No lyrics panel: do not leave a stale touch target.
 
+def panel_options():
+    path = STATUS.with_name('touchbar-karaoke-ui.json')
+    try:
+        options = json.loads(path.read_text()[:4096])
+        return options if isinstance(options, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_panel_options(options):
+    path = STATUS.with_name('touchbar-karaoke-ui.json')
+    temp = path.with_suffix('.tmp')
+    temp.write_text(json.dumps(options))
+    temp.replace(path)
+
+
+def cycle_panel(state):
+    options = panel_options()
+    if options.get('expanded') or not state.get('running') or state.get('error'):
+        return False
+    try:
+        data = json.loads(STATUS.with_name('touchbar-karaoke.json').read_text()[:49152])
+        station = state.get('station') or {}
+        key = [station.get('uuid', station.get('name', '')), state.get('title', '')]
+        if (not data.get('active') or data.get('key') != key
+                or not 0 <= time.monotonic() - float(data.get('updated_at', 0)) < 3):
+            return False
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+    view = options.get('view') if options.get('view_key') == key else None
+    if view not in ('lyrics', 'spectrum'):
+        view = data.get('view', 'spectrum' if data.get('status') in ('syncing', 'unavailable') else 'lyrics')
+    options.update(view='lyrics' if view == 'spectrum' else 'spectrum', view_key=key)
+    save_panel_options(options)
+    return True
+
+
 def feedback(active,volume):
     payload={'active':active,'volume':volume,'expires':time.monotonic()+1.1}
     temp=FEEDBACK.with_suffix('.tmp')
@@ -356,12 +393,9 @@ def main():
                         last_song_open=now
                         open_song_info()
                     if kind==1 and code==188 and value==1: # F18: expand/collapse controls
-                        ui=Path(os.environ['XDG_RUNTIME_DIR'])/'touchbar-karaoke-ui.json'
-                        try: expanded=json.loads(ui.read_text()).get('expanded') is True
-                        except (OSError,ValueError,AttributeError): expanded=False
-                        temp=ui.with_suffix('.tmp')
-                        temp.write_text(json.dumps({'expanded':not expanded}))
-                        temp.replace(ui)
+                        options = panel_options()
+                        options['expanded'] = not options.get('expanded', False)
+                        save_panel_options(options)
                     if kind==1 and value==1 and code!=184:
                         blocked_at=now
                         if gesture: gesture.cancelled=True
@@ -394,9 +428,12 @@ def main():
                     elif gesture is not None:
                         action=gesture.action(now)
                         if action and action[0]=='tap':
-                            command=MEDIA['control_command'](gesture.media_state,'open') if gesture.media_state else []
-                            if command: subprocess.Popen(command,stdout=subprocess.DEVNULL)
-                            logging.warning('Media panel tap: %s',gesture.media_state.get('source'))
+                            if cycle_panel(gesture.media_state):
+                                logging.warning('Lyrics panel view toggled')
+                            else:
+                                command=MEDIA['control_command'](gesture.media_state,'open') if gesture.media_state else []
+                                if command: subprocess.Popen(command,stdout=subprocess.DEVNULL)
+                                logging.warning('Media panel tap: %s',gesture.media_state.get('source'))
                         elif gesture.armed and not gesture.cancelled and gesture.distance>=25:
                             dx=gesture.x-gesture.start
                             target=volume_for_swipe(gesture.base_volume,dx) if abs(dx)>=25 else gesture.base_volume

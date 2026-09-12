@@ -53,7 +53,8 @@ class SpectrumTests(unittest.TestCase):
                              ({'status':'syncing', 'line':'Recognition unavailable · retrying…'}, '🔄')):
             svg = r.render_lyrics({'karaoke': state})
             ET.fromstring(svg)
-            self.assertIn(emoji, svg)
+            self.assertEqual(r.spectrum_status(state)[0], emoji)
+            self.assertIn('data:image/png;base64,', svg)
             self.assertNotIn(r.spectrum_status(state)[1], svg)
         for status in ('synced', 'paused'):
             svg = r.render_lyrics({'karaoke': {'status': status, 'line': 'Current line'}})

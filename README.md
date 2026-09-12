@@ -39,7 +39,7 @@ Add optional synchronized lyrics and watch the current line light up as the song
 
 ## A spectrum while lyrics wait.
 
-When synced lyrics are being searched for or aren’t available, a live stereo spectrum fills the lyrics panel. Inspired by the AIWA GE-950, it uses four teal-to-mint shades, segmented bars, and held peaks. Synced lyrics take over automatically when ready.
+When synced lyrics are being searched for or aren’t available, a live stereo spectrum fills the lyrics panel. Inspired by the AIWA GE-950, it uses four teal-to-mint shades, segmented bars, and held peaks. Synced lyrics take over automatically when ready. Tap the lyrics/spectrum panel to switch views manually; a new song returns to automatic mode. Swipes still adjust volume.
 
 [![Live Touch Bar spectrum with the no-synced-lyrics music-note icon](assets/screenshots/spectrum-live-01.png)](assets/screenshots/spectrum-live-01.png)
 
@@ -52,10 +52,11 @@ When synced lyrics are being searched for or aren’t available, a live stereo s
 | 🎵 | No matching synced lyrics found. Enjoy the spectrum; a later retry may find a match. |
 | 📄 | Lyrics are available without synchronized timing. Tap song info to read them. |
 | 🎹 | The matched provider marks the track as instrumental. |
+| 🎤 | Synced lyrics are ready while you are viewing the spectrum; tap to return to them. |
 
 “Instrumental” comes from LRCLIB’s `instrumental` flag or NetEase’s `nolyric` flag, not vocal detection. Provider metadata can be wrong; an empty search alone never proves a track is instrumental.
 
-Spectrum analysis stays local and uses only the selected player’s uniquely identified audio stream. Capture stops when paused or when synced lyrics take over. No extra Python dependencies are needed beyond the existing lyrics setup. [Details and limits →](docs/SPECTRUM.md)
+Spectrum analysis stays local and uses only the selected player’s uniquely identified audio stream. Capture stops when paused or when the lyrics view takes over. No extra Python dependencies are needed beyond the existing lyrics setup. [Details and limits →](docs/SPECTRUM.md)
 
 ## There’s more to every song.
 
@@ -69,7 +70,7 @@ Keep brightness, keyboard backlight, and system volume within reach. Expand the 
 
 ## Get started
 
-**New in v1.2.0:** live stereo spectrum while synced lyrics are searching or unavailable, with compact status emojis. [Upgrade instructions](docs/MIGRATING.md). The plugin ID stays `tonybo.touchbar-radio`.
+**New in v1.2.1:** tap to switch between lyrics and spectrum, with crisp color status icons. [Upgrade instructions](docs/MIGRATING.md). The plugin ID stays `tonybo.touchbar-radio`.
 
 You’ll need a **T2 MacBook with a working tiny-dfr Touch Bar**, **Omarchy with Hyprland Lua and omarchy-shell**, and **Radio Atlas or the Apple Music Omarchy plugin**. Check the [full requirements](docs/GUIDE.md#requirements) first.
 

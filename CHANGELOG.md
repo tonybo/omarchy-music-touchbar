@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.1 — Tap to switch views (2026-09-13)
+
+- Tap the lyrics/spectrum panel to cycle views for the current song; a new song resumes automatic lyrics fallback. Preserve swipes and expanded-controls behavior.
+- Render status emojis as fixed 24-pixel color artwork, with a mint music note for contrast and 🎤 when synced lyrics are ready behind the spectrum.
+
+
 ## v1.2.0 — Live spectrum (2026-09-13)
 
 - Show a GE-950-inspired stereo spectrum while song timing or synced lyrics are searching, retrying, or unavailable. Return automatically to synchronized lyrics.

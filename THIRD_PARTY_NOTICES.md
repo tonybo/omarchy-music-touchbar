@@ -53,3 +53,7 @@ Media Session clock patch to the user's existing bridge; the full extension
 and browser profile are not bundled. Apple Music and its artwork are Apple
 or their respective rights holders' property. No song audio or lyrics are
 bundled with this release.
+
+## Status emoji artwork
+
+Status emoji images derive from Google Noto Emoji. Source revision, modifications and upstream licenses are documented in [assets/status-emoji/README.md](assets/status-emoji/README.md).
