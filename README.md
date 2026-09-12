@@ -37,6 +37,26 @@ Add optional synchronized lyrics and watch the current line light up as the song
 
 <sub>Radio lyrics depend on recognition and availability. Apple Music lyrics use its exact track title and playback clock, with LRCLIB/NetEase fallback; Apple’s own lyrics are not currently exported by the supported web app. The highlight follows line timing; it is not word-by-word alignment.</sub>
 
+## A spectrum while lyrics wait.
+
+When synced lyrics are being searched for or aren’t available, a live stereo spectrum fills the lyrics panel. Inspired by the AIWA GE-950, it uses four teal-to-mint shades, segmented bars, and held peaks. Synced lyrics take over automatically when ready.
+
+[![Live Touch Bar spectrum with the no-synced-lyrics music-note icon](assets/screenshots/spectrum-live-01.png)](assets/screenshots/spectrum-live-01.png)
+
+<sub>Actual T2 Touch Bar capture. The icon between the stereo banks shows lyric availability; descriptions stay here to keep the display compact.</sub>
+
+| Icon | Meaning |
+| --- | --- |
+| 🔍 | Searching for song timing or synced lyrics; availability is not known yet. |
+| 🔄 | Recognition or lyric lookup is retrying; this is not a final “no lyrics” result. |
+| 🎵 | No matching synced lyrics found. Enjoy the spectrum; a later retry may find a match. |
+| 📄 | Lyrics are available without synchronized timing. Tap song info to read them. |
+| 🎹 | The matched provider marks the track as instrumental. |
+
+“Instrumental” comes from LRCLIB’s `instrumental` flag or NetEase’s `nolyric` flag, not vocal detection. Provider metadata can be wrong; an empty search alone never proves a track is instrumental.
+
+Spectrum analysis stays local and uses only the selected player’s uniquely identified audio stream. Capture stops when paused or when synced lyrics take over. No extra Python dependencies are needed beyond the existing lyrics setup. [Details and limits →](docs/SPECTRUM.md)
+
 ## There’s more to every song.
 
 Tap the artwork to open a song window with a larger cover, album details, and release information when available. Add optional Wikipedia background to explore the artist, song, and album. The same window follows what’s playing.
@@ -49,7 +69,7 @@ Keep brightness, keyboard backlight, and system volume within reach. Expand the 
 
 ## Get started
 
-**New in v1.1.0:** formerly Touch Bar Radio, now Music Touchbar. The plugin ID stays `tonybo.touchbar-radio` so existing configurations remain compatible.
+**New in v1.2.0:** live stereo spectrum while synced lyrics are searching or unavailable, with compact status emojis. [Upgrade instructions](docs/MIGRATING.md). The plugin ID stays `tonybo.touchbar-radio`.
 
 You’ll need a **T2 MacBook with a working tiny-dfr Touch Bar**, **Omarchy with Hyprland Lua and omarchy-shell**, and **Radio Atlas or the Apple Music Omarchy plugin**. Check the [full requirements](docs/GUIDE.md#requirements) first.
 

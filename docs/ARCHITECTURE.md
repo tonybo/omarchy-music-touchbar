@@ -95,3 +95,7 @@ Only it reads selected-browser NetEase cookies. The worker reads a restricted
 `~/.local/state` fallback, and sends its allowlisted session values only to NetEase.
 It does not log or forward them to the renderer. This state is never packaged.
 See [setup, expiry and removal](NETEASE.md).
+
+## Spectrum fallback
+
+`src/spectrum.py` runs in the lyrics worker, publishing bounded stereo band/peak arrays through the existing karaoke/feed path. It uses only the selected app’s uniquely identified monitor stream. Audio analysis stays in memory and requires no network requests. The protected renderer validates 30 finite band/peak values, displays the fallback for searching/unavailable states, and keeps the existing 10 fps cadence and touch guard. See [spectrum details](SPECTRUM.md).

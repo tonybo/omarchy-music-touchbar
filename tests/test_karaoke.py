@@ -171,7 +171,7 @@ class KaraokeTests(unittest.TestCase):
     def test_metadata_does_not_invent_position(self):
         self.assertEqual(k.split_title('Artist - Title'),('Artist','Title'))
         svg=r.render_lyrics({'running':True,'title':'Artist - Title'})
-        self.assertIn('Finding song timing',svg)
+        self.assertIn('🔍',svg)
     def test_lyrics_cannot_change_svg_markup(self):
         svg=r.render_lyrics({'karaoke':{'line':'<script>&','next':'"x"','progress':float('nan')}})
         ET.fromstring(svg)
@@ -188,12 +188,12 @@ class KaraokeTests(unittest.TestCase):
     def test_status_panel_expands_for_lyrics_and_preserves_control_positions(self):
         for status in ('syncing', 'unavailable', 'idle'):
             span, width = r.lyrics_geometry({'karaoke': {'status': status}})
-            self.assertEqual(span, 3)
+            self.assertEqual(span, 3 if status == 'idle' else 8)
             layout = tomllib.loads(r.layout_config('MediaLayerKeys=[{Action="VolumeUp"}]', True, True, span, width))
             keys = layout['MediaLayerKeys']
             self.assertIn('radio-info', [key.get('Icon') for key in keys])
             self.assertEqual(keys[0]['Action'], 'F19')
-            self.assertEqual(sum(key.get('Stretch', 1) for key in keys[:3]), 11)
+            self.assertEqual(sum(key.get('Stretch', 1) for key in keys[:2 if span == 8 else 3]), 11)
         self.assertEqual(r.lyrics_geometry({'karaoke': {'status': 'synced'}}), (8, 900))
 
     def test_song_page_escapes_metadata_and_ignores_stale_recognition(self):

@@ -31,7 +31,7 @@ Apple Music’s Chromium MPRIS volume property does not actually change playback
 
 ## Lyrics and matching
 
-Apple Music supplies the full artist, track title, album, artwork, duration, and playback clock. Apple Music audio is not recorded or sent to Shazam. LRCLIB and NetEase receive the track metadata when lyric lookup is enabled; optional Wikipedia background lookup receives the song/artist/album names.
+Apple Music supplies the full artist, track title, album, artwork, duration, and playback clock. Apple Music does not use audio recognition or send audio to Shazam. While synced lyrics are searching or unavailable, the spectrum captures its uniquely identified playback stream for local, in-memory analysis; no samples are saved or uploaded. LRCLIB and NetEase receive the track metadata when lyric lookup is enabled; optional Wikipedia background lookup receives the song/artist/album names.
 
 The current web app does not export Apple’s own lyrics through MPRIS. Music Touchbar uses its existing provider fallback, synchronized to Apple’s clock. If a player exports native timed lyrics in the future, they take precedence.
 

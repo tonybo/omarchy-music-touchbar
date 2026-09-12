@@ -170,7 +170,7 @@ def lyrics_geometry(state):
     if volume_feedback(state):
         return 5, 520
     k=state.get('karaoke') or {}
-    if k.get('status') == 'synced':
+    if k.get('status') in ('synced', 'syncing', 'unavailable'):
         return 8, 900
     if k.get("line") == "Instrumental":
         return 0, 180
@@ -238,9 +238,59 @@ def render_music_detective(elapsed, panel_width=900):
 </svg>'''
 
 
+def spectrum_status(k):
+    line = clean(k.get('line'), 600)
+    if 'retrying' in line.lower():
+        return '🔄', 'Retrying'
+    if k.get('status', 'syncing') == 'syncing':
+        return '🔍', 'Searching'
+    if line == 'Instrumental':
+        return '🎹', 'Instrumental'
+    if k.get('lyrics'):
+        return '📄', 'Lyrics in info'
+    return '🎵', 'No synced lyrics'
+
+
+def render_spectrum(k, panel_width=900):
+    spectrum = k.get('spectrum') or {}
+    if not isinstance(spectrum, dict): spectrum = {}
+    def values(name):
+        data = spectrum.get(name)
+        if not isinstance(data, list) or len(data) != 30: return [0]*30
+        return [max(0, min(1, v)) if isinstance(v, (int, float)) and math.isfinite(v) else 0 for v in data]
+    bars, peaks = values('bars'), values('peaks')
+    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{panel_width}" height="48">',
+             f'<rect width="{panel_width}" height="48" rx="6" fill="#060d12"/>']
+    emoji, _ = spectrum_status(k)
+    center = panel_width / 2
+    parts.append(f'<text x="{center:.1f}" y="31" text-anchor="middle" font-family="Noto Color Emoji" font-size="20" fill="#c4f5dc">{emoji}</text>')
+    bank = (panel_width - 104) / 2
+    step = bank / 15
+    for channel in range(2):
+        start = 20 + channel * (bank + 64)
+        parts.append(f'<text x="{start-12}" y="23" font-family="sans-serif" font-size="9" fill="#6af5ee">{"L" if channel == 0 else "R"}</text>')
+        for band in range(15):
+            i = channel*15 + band
+            x = start + band*step
+            count = round(bars[i]*9)
+            peak = round(peaks[i]*9)
+            for row in range(9):
+                color = ('#278d91', '#3cbdb5', '#76dfca', '#c4f5dc')[min(3, row*4//9)] if row < count else '#102025'
+                parts.append(f'<rect x="{x:.1f}" y="{31-row*3}" width="{step-3:.1f}" height="2" fill="{color}"/>')
+            if peak > count:
+                parts.append(f'<rect x="{x:.1f}" y="{31-(peak-1)*3}" width="{step-3:.1f}" height="2" fill="#c4f5dc"/>')
+            parts.append(f'<rect x="{x:.1f}" y="35" width="{step-3:.1f}" height="1" fill="#368c89"/>')
+        for band, label in ((0,'40'), (4,'250'), (7,'1k'), (10,'4k'), (14,'14k')):
+            parts.append(f'<text x="{start+(band+.5)*step:.1f}" y="45" text-anchor="middle" font-family="sans-serif" font-size="7" fill="#368c89">{label}</text>')
+    parts.append('</svg>')
+    return ''.join(parts)
+
+
 def render_lyrics(state, panel_width=900):
     k=state.get('karaoke') or {}
     status=k.get('status','syncing')
+    if status in ('syncing', 'unavailable') and not state.get('paused'):
+        return render_spectrum(k, panel_width)
     if status == 'syncing' and k.get('line') == 'Song not recognized · retrying…':
         return render_music_detective(time.monotonic(), panel_width)
     line=clean(k.get('line') or 'Finding song timing…',600)
@@ -355,7 +405,7 @@ def main():
                 visual_volume = None
             compact = music_layout(state)
             panel_span, panel_width = lyrics_geometry(state)
-            keep_awake = compact and not state.get('paused') and (state.get('karaoke') or {}).get('status') == 'synced'
+            keep_awake = compact and not state.get('paused') and (state.get('karaoke') or {}).get('status') in ('synced', 'syncing', 'unavailable')
             layout = (compact, state.get('running') is True, panel_span, panel_width, keep_awake)
             svg = render_lyrics(state, panel_width) if compact and not volume_feedback(state) else render(state, now - started)
             track_svg = render_track(state, now - started) if compact else None

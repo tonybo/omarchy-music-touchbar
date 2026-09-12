@@ -93,7 +93,7 @@ counts keyboard/pointer/touch activity, not readable lyric content, toward its
 30-second dim / 60-second off timers.
 
 The optional `tiny-dfr-lyric-keep-awake.patch` adds `KeepAwake`, requested by the
-renderer only for a visible, synchronized, unpaused lyrics panel. It refreshes
+renderer for a visible, unpaused synchronized lyrics panel or spectrum fallback. It refreshes
 normal activity while generated config updates continue. The request expires
 three seconds after the last config reload, and lid-close still takes priority.
 Normal idle behavior resumes after playback pauses/stops or the publisher goes

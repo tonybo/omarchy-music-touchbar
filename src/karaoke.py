@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Unprivileged radio fingerprinting, timed-lyrics lookup and cover thumbnails.
 
-Only the matching Radio Atlas sink-input is recorded, never a microphone.
+Recognition records only the matching Radio Atlas sink-input, never a microphone.
+The spectrum also locally analyzes the selected Apple Music playback stream.
 Network operations run off the publisher thread. No audio is saved to disk.
 """
 import asyncio
@@ -38,7 +39,7 @@ ALIAS_CONFIG = MATCH_CONFIG.with_name('lyrics-aliases.json')
 MATCH_THRESHOLDS = {'strict': 1.0, 'balanced': 0.90, 'relaxed': 0.85}
 SONG_DETAILS = runpy.run_path(str(Path(__file__).with_name('song_details.py')))['details']
 CATALOG = runpy.run_path(str(Path(__file__).with_name('song_catalog.py')))
-UA = 'MusicTouchbar/1.1 (https://github.com/tonybo/omarchy-music-touchbar)'
+UA = 'MusicTouchbar/1.2 (https://github.com/tonybo/omarchy-music-touchbar)'
 
 
 def read_json(path, limit=65536):
@@ -799,6 +800,7 @@ def main():
     executor = ThreadPoolExecutor(max_workers=2)
     future = None; current = None; key = None; retry = 0; was_paused = False
     epoch = 0; pending_epoch = None; last_error = None
+    spectrum = runpy.run_path(str(Path(__file__).with_name('spectrum.py')))['Spectrum'](radio_input)
     apple_clock = AppleLyricClock()
     while True:
         now = time.monotonic()
@@ -854,6 +856,7 @@ def main():
             else:
                 data.update(status='unavailable', line=lyrics_status(current))
         if not active: data.update(status='idle', line='')
+        data['spectrum'] = spectrum.update(state, active and not paused and data['status'] in ('syncing', 'unavailable'))
         publish(data)
         time.sleep(.1)
 

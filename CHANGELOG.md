@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.2.0 — Live spectrum (2026-09-13)
+
+- Show a GE-950-inspired stereo spectrum while song timing or synced lyrics are searching, retrying, or unavailable. Return automatically to synchronized lyrics.
+- Add 15 frequency bands per channel, four teal-to-mint shades, segmented bars and held peaks at the existing 10 fps display cadence.
+- Capture only the uniquely identified selected Radio Atlas or Apple Music playback stream. Analyze audio locally in memory; stop capture on pause, idle or synchronized lyrics. No microphone/default-mix fallback or new Python dependency.
+- Preserve the renderer’s touch guard and request keep-awake while the fallback is visible and playing.
+- Use compact, icon-only lyric status indicators; document all five emojis and provider-reported instrumental classification in the README.
+- Add a real Touch Bar spectrum screenshot and refresh the marketplace preview.
+- Validate silence/frequency response, source selection, stale-frame rejection, status transitions and malformed renderer input.
+
 ## v1.1.0 — Music Touchbar (2026-09-12)
 
 - Rename the project from Touch Bar Radio to Music Touchbar, covering both Radio Atlas and Apple Music. Keep the existing plugin ID and installed paths for compatibility.

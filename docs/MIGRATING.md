@@ -1,3 +1,9 @@
+# Upgrading to Music Touchbar v1.2.0
+
+Use the previous checkout to uninstall packaged hardware support (`./install.sh --uninstall`), update the plugin/checkout, then reinstall with the same desired options, including `--with-karaoke` for spectrum and lyrics. Keep the existing Python 3.12 lyrics environment. A plugin update alone does not replace installed hardware services. Uninstall protects files edited since installation; reconcile those edits first.
+
+The plugin ID and service/configuration paths are unchanged. The new `src/spectrum.py` is installed with the other Python helpers. Spectrum capture includes the selected Apple Music stream when its lyrics are unavailable; processing stays local, and Apple audio is never sent to Shazam. See the [spectrum guide](SPECTRUM.md).
+
 # Upgrading to Music Touchbar v1.1.0
 
 Touch Bar Radio is now **Music Touchbar**. The repository is now `tonybo/omarchy-music-touchbar`; existing clones can update their origin with:

@@ -11,3 +11,9 @@ lyric excerpts are third-party content shown to illustrate the application's
 lyrics and metadata display; the project's MIT license does not grant rights
 to that content. These captures are separate from the fictional artwork in
 the marketplace `preview.png`.
+
+## Live spectrum screenshot
+
+`spectrum-live-01.png` was captured from the active T2 Touch Bar DRM framebuffer on September 13, 2026 during Radio Atlas playback. It shows the four-grade stereo spectrum and 🎵 (no matching synced lyrics) status. The actual 2170 × 60 framebuffer was rotated into reading orientation and converted to PNG without retouching. The displayed recording is **Overture “Leonore No. 3” — Berlin Philharmonic & Ferenc Fricsay**; the status reflects the lyrics lookup, not a claim that the audio contains vocals. Artwork belongs to its respective rightsholders.
+
+The marketplace preview is a separate illustration generated from the renderer with example levels and fictional track metadata.

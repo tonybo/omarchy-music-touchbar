@@ -241,9 +241,15 @@ alone does not authenticate the worker: explicitly import only the NetEase
 session, then restart the installed karaoke unit. Credentials remain outside
 the checkout; the worker never reads browser cookies automatically.
 
+### Spectrum while lyrics are unavailable
+
+The lyrics setup also enables a live stereo spectrum during searching or unavailable states. Read the [spectrum guide](SPECTRUM.md) and [status emoji legend](../README.md#a-spectrum-while-lyrics-wait).
+
 ### Network use and timing
 
-The worker captures eight seconds (twelve after a failed attempt) from the uniquely matched Radio Atlas audio
+The spectrum locally analyzes the selected Radio Atlas or Apple Music stream while lyrics are searching or unavailable; these samples are never uploaded or saved.
+
+For song recognition, the worker captures eight seconds (twelve after a failed attempt) from the uniquely matched Radio Atlas audio
 stream, never a microphone or the unrestricted system mix. ShazamIO derives an
 audio fingerprint for Shazam recognition. Artist and song names go to LRCLIB and, when needed, NetEase;
 the recognized Apple song ID goes to Apple's US, Taiwan, Japan, and China
