@@ -85,6 +85,8 @@ In the setup panel, choose **Preview setup**, then **Install hardware support**.
 
 **Want live lyrics?** Follow the [lyrics and song-details setup](docs/GUIDE.md#enable-karaoke-and-song-details). It requires a separate Python 3.12 environment and optional recognition dependencies. [How recognition uses audio and online services →](docs/GUIDE.md#network-use-and-timing)
 
+**Privacy:** See the [publication audit and runtime data guide](docs/PRIVACY.md) for network use, optional session import, local data and logging.
+
 **Chinese/Japanese lyric coverage:** LRCLIB is tried first, then NetEase. See the [NetEase login guide](docs/NETEASE.md) for phone verification, explicit browser-session import, private storage, expiry and removal. No account credentials belong in this checkout.
 
 

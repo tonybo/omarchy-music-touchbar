@@ -40,6 +40,20 @@ def current_karaoke(karaoke, station, title):
     return {}
 
 
+def karaoke_for_display(data):
+    """Keep full lyrics, artwork paths and song details in the private worker file."""
+    if not data:
+        return {}
+    result = {key: data[key] for key in (
+        'active', 'paused', 'status', 'line', 'next', 'progress',
+        'artist', 'title', 'cover', 'view') if key in data}
+    result['has_lyrics'] = bool(data.get('lyrics'))
+    spectrum = data.get('spectrum')
+    if isinstance(spectrum, dict):
+        result['spectrum'] = {key: spectrum[key] for key in ('bars', 'peaks') if key in spectrum}
+    return result
+
+
 def main():
     previous=None
     filtered={}
@@ -112,7 +126,7 @@ def main():
             with path.open('rb') as stream:
                 raw = stream.read(49153)
             karaoke = json.loads(raw) if len(raw) <= 49152 else {}
-            filtered['karaoke'] = current_karaoke(karaoke, station, filtered.get('title', ''))
+            filtered['karaoke'] = karaoke_for_display(current_karaoke(karaoke, station, filtered.get('title', '')))
             if filtered['karaoke'] and karaoke['updated_at'] > now:
                 logging.warning('Prevented lyric freshness race: snapshot arrived %.3f ms after loop start',
                                 (karaoke['updated_at'] - now) * 1000)

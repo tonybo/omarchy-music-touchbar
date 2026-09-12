@@ -22,3 +22,29 @@ omarchy-radio-atlas/
 
 touchbar-media.json
 touchbar-apple-art-*.img
+
+# Local credentials, diagnostic exports, audio and lyric downloads
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.log
+*.core
+*.dump
+*.pcm
+*.raw
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.flac
+*.ogg
+*.lrc
+*.bak
+*.before*
+touchbar-cover-*
+touchbar-karaoke-ui.json
+radio-touchbar-volume.json

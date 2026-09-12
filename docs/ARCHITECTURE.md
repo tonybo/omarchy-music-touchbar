@@ -71,10 +71,11 @@ line timing. Results are rejected when they contradict station metadata. Native
 song-link titles supplement translated titles during lyric lookup. A worker
 thread handles network work; publication continues every 100 ms.
 
-The feed validates the result's identity and heartbeat before forwarding it to
-the offline renderer. High-resolution artwork stays in the user runtime directory;
-only its cache filename enters metadata. The renderer receives a bounded 48-pixel
-thumbnail for the Touch Bar. Full artwork is embedded only in the local HTML card.
+The feed validates the result's identity and heartbeat, then forwards only required
+display fields through an owner-only status file to the offline renderer. Full
+lyrics, song details and high-resolution artwork paths stay in the private runtime
+snapshot. The renderer receives a bounded 48-pixel thumbnail and a boolean for
+plain-lyric availability. Full artwork is embedded only in the local HTML card.
 
 The gesture worker launches that card through the fixed transient user unit
 `touchbar-song-window.service`, with a dedicated Chromium profile. Starting a

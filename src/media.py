@@ -263,8 +263,8 @@ def main():
             temp.write_text(json.dumps(selected, ensure_ascii=True))
             temp.chmod(0o600)
             temp.replace(STATUS)
-        except Exception:
-            logging.exception('Media state update failed')
+        except Exception as error:
+            logging.warning('Media state update failed (%s)', type(error).__name__)
         time.sleep(max(.02, .25 - (time.monotonic() - start)))
 
 

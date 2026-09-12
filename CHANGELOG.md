@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.2 — Privacy and code cleanup (2026-09-13)
+
+- Audit all published history and release attachments; no apparent live credentials or private runtime exports found. Document scope, findings and remaining visibility in `docs/PRIVACY.md`.
+- Restrict the renderer status file to its owner and forward only display fields, excluding full lyrics, song details and artwork paths.
+- Keep listening metadata out of routine logs; detailed diagnostics now require `karaoke.py --debug`.
+- Remove the superseded embedded detective animation, unused gesture state/import and development-only notes.
+- Add a tracked-file publication guard to CI and ignore common credential, audio, lyric and diagnostic exports.
+
+
 ## v1.2.1 — Tap to switch views (2026-09-13)
 
 - Tap the lyrics/spectrum panel to cycle views for the current song; a new song resumes automatic lyrics fallback. Preserve swipes and expanded-controls behavior.

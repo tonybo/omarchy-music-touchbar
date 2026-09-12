@@ -21,7 +21,6 @@ from pathlib import Path
 import re
 import runpy
 import select
-import socket
 import stat
 import subprocess
 import time
@@ -182,7 +181,7 @@ def metadata_agrees(radio_title, artist, title, mode=None):
         score = min(SequenceMatcher(None, left, right).ratio(),
                     SequenceMatcher(None, right, left).ratio())
         if min(len(left), len(right)) >= 5 and score >= MATCH_THRESHOLDS[mode]:
-            logging.info('Accepted fuzzy artist match %s / %s (%.3f, %s); title corroborated',
+            logging.debug('Accepted fuzzy artist match %s / %s (%.3f, %s); title corroborated',
                          expected_artist, artist, score, mode)
             verdicts[0] = True
     return True in verdicts and False not in verdicts
@@ -363,7 +362,7 @@ def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
                 raise ValueError('Invalid lyrics search response')
             return [r for r in result if isinstance(r, dict)], 0
         except (OSError, ValueError):
-            logging.warning('Lyrics search failed for %s / %s', alternate_artist, alternate_title)
+            logging.warning('Lyrics search failed; provider unavailable')
             return [], 1
     # Regional pairs are queried first. Bound both fan-out and waiting time;
     # use the old sequential path for small lookups and deterministic retries.
@@ -460,7 +459,7 @@ def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
             for candidate in candidates[:2]:
                 match = netease_lyrics(candidate)
                 if match[0] or (not rows and (match.plain or match[2])):
-                    logging.info('NetEase lyrics entry %s matched %s / %s (%ss)',
+                    logging.debug('NetEase lyrics entry %s matched %s / %s (%ss)',
                                  candidate['id'], artist, title, candidate['duration'])
                     return match
         except (OSError, ValueError, TypeError, AttributeError):
@@ -474,7 +473,7 @@ def find_lyrics(artist, title, aliases=(), artist_aliases=(), album='',
     row = rows[0]
     if failures and not (row.get('syncedLyrics') or row.get('plainLyrics') or row.get('instrumental')):
         raise ValueError('Lyrics search temporarily unavailable')
-    logging.info('Lyrics entry %s: %s / %s, album %s, duration %ss',
+    logging.debug('Lyrics entry %s: %s / %s, album %s, duration %ss',
                  row.get('id'), artist, title, row.get('albumName'), row.get('duration'))
     return LyricsMatch(parse_lrc(row.get('syncedLyrics') or ''),
                        float(row.get('duration') or 0), bool(row.get('instrumental')),
@@ -657,17 +656,17 @@ def lookup(state, sample_seconds=8):
         if consistent_confirmation((track, captured, offset), confirmation):
             track, captured, offset = confirmation
             agrees = truncated = True
-            logging.info('Confirmed truncated stream title via two audio samples: %s / %s', artist, title)
+            logging.debug('Confirmed truncated stream title via two audio samples: %s / %s', artist, title)
     if not agrees:
-        logging.warning('Rejected conflicting match %s / %s; radio says %s',
+        logging.debug('Rejected conflicting match %s / %s; radio says %s',
                         artist, title, state.get('title', ''))
         raise ValueError('Song not recognized consistently with radio metadata')
     cover = ''
     cover_file = ''
     try: cover_file = page_cover((track.get('images') or {}).get('coverarthq') or (track.get('images') or {}).get('coverart', ''))
-    except Exception: logging.warning('Full-size artwork unavailable', exc_info=True)
+    except Exception: logging.warning('Full-size artwork unavailable', exc_info=logging.getLogger().isEnabledFor(logging.DEBUG))
     try: cover = thumbnail((track.get('images') or {}).get('coverart', ''))
-    except Exception: logging.warning('Artwork unavailable', exc_info=True)
+    except Exception: logging.warning('Artwork unavailable', exc_info=logging.getLogger().isEnabledFor(logging.DEBUG))
     lyrics_error = False
     lyrics_source = ''
     plain_lyrics = ''
@@ -695,10 +694,10 @@ def lookup(state, sample_seconds=8):
         plain_lyrics = getattr(lyric_match, 'plain', '')
         lyrics_source = getattr(lyric_match, 'source', 'LRCLIB') if lines or plain_lyrics or instrumental else ''
     except Exception:
-        logging.warning('Lyrics lookup unavailable', exc_info=True)
+        logging.warning('Lyrics lookup unavailable', exc_info=logging.getLogger().isEnabledFor(logging.DEBUG))
         lines, duration, instrumental = [], 0, False
         lyrics_error = True
-    logging.info('Recognized %s / %s at %.2fs; %d timed lines', artist, title, offset, len(lines))
+    logging.debug('Recognized %s / %s at %.2fs; %d timed lines', artist, title, offset, len(lines))
     return {'artist': artist, 'title': title, 'cover': cover, 'lines': lines,
             'details': dict(SONG_DETAILS(track), cover_file=cover_file),
             'lyrics': ('\n'.join(text for _, text in lines) or plain_lyrics)[:24000].splitlines(),
@@ -752,7 +751,7 @@ def lookup_apple(state):
         cover = thumbnail(state.get('artwork', ''))
         cover_file = page_cover(state.get('artwork', ''))
     except Exception:
-        logging.warning('Apple Music artwork unavailable', exc_info=True)
+        logging.warning('Apple Music artwork unavailable', exc_info=logging.getLogger().isEnabledFor(logging.DEBUG))
     native = state.get('native_lyrics', '')
     lines = parse_lrc(native)
     plain, source, instrumental, failed = native, 'Apple Music' if native else '', False, False
@@ -767,12 +766,12 @@ def lookup_apple(state):
                 source = getattr(match, 'source', 'LRCLIB') if lines or plain or instrumental else ''
             duration = duration or matched_duration
         except Exception:
-            logging.warning('Apple Music lyrics lookup unavailable', exc_info=True)
+            logging.warning('Apple Music lyrics lookup unavailable', exc_info=logging.getLogger().isEnabledFor(logging.DEBUG))
             failed = True
     track = {'title': title, 'subtitle': artist, 'sections': [
         {'metadata': [{'title': 'Album', 'text': album}]}]}
     details = dict(SONG_DETAILS(track), cover_file=cover_file)
-    logging.info('Apple Music: %s / %s; %d timed lines (%s)', artist, title, len(lines), source or 'unavailable')
+    logging.debug('Apple Music: %s / %s; %d timed lines (%s)', artist, title, len(lines), source or 'unavailable')
     return {'artist': artist, 'title': title, 'cover': cover, 'lines': lines,
             'details': details, 'lyrics': ('\n'.join(text for _, text in lines) or plain)[:24000].splitlines(),
             'lyrics_error': failed, 'lyrics_source': source, 'duration': duration,
@@ -802,8 +801,8 @@ def publish(data):
     temp.replace(OUT)
 
 
-def main():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+def main(debug=False):
+    logging.basicConfig(level=logging.DEBUG if debug else logging.WARNING, format='%(asctime)s %(message)s')
     executor = ThreadPoolExecutor(max_workers=2)
     future = None; current = None; key = None; retry = 0; was_paused = False
     epoch = 0; pending_epoch = None; last_error = None
@@ -833,7 +832,7 @@ def main():
                     current = result
                     last_error = None
             except Exception as e:
-                logging.warning('Synchronization unavailable: %s', e)
+                logging.warning('Synchronization unavailable (%s)', type(e).__name__)
                 if pending_epoch == epoch:
                     last_error = ('Waiting for radio audio…' if 'stream not uniquely' in str(e)
                                   else 'Song not recognized · retrying…' if 'not recognized' in str(e)
@@ -870,6 +869,8 @@ def main():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--debug', action='store_true',
+                        help='Log detailed matching diagnostics, including listening metadata; do not share unreviewed logs')
     parser.add_argument('--matching', choices=MATCH_THRESHOLDS,
                         help='Save artist matching mode for subsequent recognition attempts and exit')
     args = parser.parse_args()
@@ -882,4 +883,4 @@ if __name__ == '__main__':
         temporary.replace(MATCH_CONFIG)
         print('Lyrics matching: ' + args.matching)
     else:
-        main()
+        main(debug=args.debug)

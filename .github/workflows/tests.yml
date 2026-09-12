@@ -9,6 +9,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install rendering dependencies
         run: sudo apt-get update && sudo apt-get install -y python3-gi python3-pil gir1.2-pango-1.0 fonts-noto-cjk icu-devtools
+      - name: Check for accidental private files
+        run: /usr/bin/python3 tools/check_public_files.py
       - name: Compile Python
         run: /usr/bin/python3 -m compileall -q src tools
       - name: Run tests

@@ -1,3 +1,7 @@
+# Upgrading to Music Touchbar v1.2.2
+
+The privacy cleanup changes the installed feed, logging defaults and status-file permissions. Use the previous checkout to uninstall hardware support, update, then reinstall with the same options. Updating the plugin checkout alone does not change existing services or permissions. Detailed matching diagnostics now require `karaoke.py --debug`; those logs may contain listening metadata. Existing journals and historical Git releases are not erased. Read the [privacy audit](PRIVACY.md).
+
 # Upgrading to Music Touchbar v1.2.0
 
 Use the previous checkout to uninstall packaged hardware support (`./install.sh --uninstall`), update the plugin/checkout, then reinstall with the same desired options, including `--with-karaoke` for spectrum and lyrics. Keep the existing Python 3.12 lyrics environment. A plugin update alone does not replace installed hardware services. Uninstall protects files edited since installation; reconcile those edits first.
@@ -19,8 +23,6 @@ For a packaged v1.0.0 installation, uninstall hardware support with the previous
 Enable `--with-apple-music` (or its setup-panel checkbox) to install the player-selection service with Apple support and back up/patch the user-owned Apple Music extension. Both players are supported together; Radio Atlas is optional when Apple support is enabled. Reuse your prepared karaoke environment and add the same karaoke/background/dictation options you used previously.
 
 Restart the dedicated Apple Music application after setup to load the clock correction. Its current queue may need to be selected again. The installer does not terminate your browser or play music automatically. See [Apple Music setup](APPLE-MUSIC.md).
-
-The author's live prototype already has the feature installed separately. Publishing this release does not reinstall or migrate that live system.
 
 # Upgrading to v1.0.0
 

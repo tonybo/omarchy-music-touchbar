@@ -43,9 +43,6 @@ Lyrics and artwork are fetched at runtime and are not bundled. Wikipedia
 introductions are attributed and linked in the song card under CC BY-SA;
 background lookup is opt-in.
 
-The detective animation uses the Noto Color Emoji detective glyph (Google,
-SIL Open Font License 1.1). See assets/NOTO-EMOJI-LICENSE for the license.
-
 Apple Music support integrates with the separately installed
 [Omarchy Apple Music plugin](https://github.com/melonamin/omarchy-apple-music)
 (MIT, Copyright 2026 Ameba Labs, LLC). The setup helper applies a small

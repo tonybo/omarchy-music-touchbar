@@ -263,7 +263,7 @@ def apply(files,account):
         p.parent.mkdir(parents=True,exist_ok=True)
         if item['user']:
             for directory in missing: os.chown(directory,account.pw_uid,account.pw_gid)
-        p.write_bytes(item['data']);p.chmod(0o644)
+        p.write_bytes(item['data']);p.chmod(0o600 if p == DATA/'status.json' else 0o644)
         os.chown(p,account.pw_uid if item['user'] else 0,account.pw_gid if item['user'] else 0)
         records[name]['installed']=True
         MANIFEST.write_text(json.dumps({'version':'1.1.0','user':account.pw_name,'files':records,'user_units':user_units},indent=2)+'\n')

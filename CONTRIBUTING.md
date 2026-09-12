@@ -7,6 +7,7 @@ For a hardware report, include the Mac model, Touch Bar DRM mode, tiny-dfr versi
 Install PyGObject/Pango and Pillow for the test interpreter, then run the tests before submitting a change:
 
 ```sh
+python3 tools/check_public_files.py
 python3 -m unittest discover -s tests -v
 python3 -m compileall -q src tools
 node --test tests/test_apple_clock.cjs

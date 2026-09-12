@@ -332,7 +332,7 @@ def open_song_info():
 
 
 def main():
-    devices={}; next_scan=0; slot=0; slots={}; gesture=None; pending_arm=0
+    devices={}; next_scan=0; slot=0; slots={}; gesture=None
     scale_x=2170/32767; scale_y=60/127
     coordinates=Coordinates()
     settings=json.loads(Path('/etc/omarchy-touchbar-radio/settings.json').read_text())
@@ -384,7 +384,7 @@ def main():
                 raw=os.read(fd,EVENT.size*256)
                 if not raw: raise OSError('device disconnected')
             except OSError:
-                os.close(fd);devices.pop(fd,None);slots={};gesture=None;pending_arm=0
+                os.close(fd);devices.pop(fd,None);slots={};gesture=None
                 continue
             for _,_,kind,code,value in EVENT.iter_unpack(raw):
                 now=time.monotonic()
@@ -401,7 +401,7 @@ def main():
                         if gesture: gesture.cancelled=True
                     continue
                 if kind==0 and code==3: # SYN_DROPPED: discard this gesture safely.
-                    slots={};gesture=None;pending_arm=0
+                    slots={};gesture=None
                 elif kind==3:
                     if code==47: slot=value
                     elif code==57:
@@ -423,7 +423,6 @@ def main():
                             output.state=gesture.media_state
                             output.sent=None
                             output.pending=None
-                            pending_arm=0
                         else: gesture.move(pos['x'],pos['y'])
                     elif gesture is not None:
                         action=gesture.action(now)
@@ -439,7 +438,7 @@ def main():
                             target=volume_for_swipe(gesture.base_volume,dx) if abs(dx)>=25 else gesture.base_volume
                             output.request(target);feedback(False,target)
                             logging.warning('Radio swipe finished: %s%%',target)
-                        gesture=None;pending_arm=0
+                        gesture=None
         now=time.monotonic()
         if gesture and gesture.armed and not gesture.cancelled and gesture.distance>=25 and now-last_feedback>=.03:
             dx=gesture.x-gesture.start

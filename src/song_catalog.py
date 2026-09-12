@@ -112,7 +112,7 @@ def catalog_rows(identifier, country, window):
         return [r for r in data.get('results', []) if isinstance(r, dict)
                 and r.get('kind') == 'song' and str(r.get('trackId')) == identifier]
     except (OSError, ValueError, TypeError, AttributeError):
-        logging.info('Localized catalogue unavailable for %s in %s', identifier, country)
+        logging.debug('Localized catalogue unavailable for %s in %s', identifier, country)
         return []
 
 
@@ -176,7 +176,7 @@ def resolve(track):
     pairs = tuple(dict.fromkeys((a, r['trackName']) for r in rows
                                for a in mixed_names(r.get('artistName', ''))
                                if isinstance(r.get('trackName'), str)))
-    logging.info('Resolved recording %s: artists %s; titles %s', identifier, artists, titles)
+    logging.debug('Resolved recording %s: artists %s; titles %s', identifier, artists, titles)
     return {'id': identifier, 'artists': artist_forms(artists), 'titles': titles,
             'albums': albums, 'duration': durations[0], 'pairs': pairs}
 
