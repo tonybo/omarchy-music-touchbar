@@ -36,11 +36,12 @@ OUT = RUNTIME / 'touchbar-karaoke.json'
 UI = RUNTIME / 'touchbar-karaoke-ui.json'
 MATCH_CONFIG = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'radio-touchbar/lyrics-matching.json'
 ALIAS_CONFIG = MATCH_CONFIG.with_name('lyrics-aliases.json')
+TIMING_CONFIG = MATCH_CONFIG.with_name('lyrics-timing.json')
 MATCH_THRESHOLDS = {'strict': 1.0, 'balanced': 0.90, 'relaxed': 0.85}
 SONG_DETAILS = runpy.run_path(str(Path(__file__).with_name('song_details.py')))['details']
 CATALOG = runpy.run_path(str(Path(__file__).with_name('song_catalog.py')))
 APPLE_LYRICS = runpy.run_path(str(Path(__file__).with_name('apple_lyrics.py')))
-UA = 'MusicTouchbar/1.2 (https://github.com/tonybo/omarchy-music-touchbar)'
+UA = 'MusicTouchbar/1.3 (https://github.com/tonybo/omarchy-music-touchbar)'
 
 
 def read_json(path, limit=65536):
@@ -812,6 +813,35 @@ def prefer_apple_lyrics(current, native, state, now):
     return result
 
 
+class AppleArtwork:
+    """Refresh delayed artwork independently of slow lyrics lookups."""
+    def __init__(self):
+        self.key = None
+        self.future = None
+        self.result = {}
+        self.retry = 0
+
+    def update(self, state, executor, now):
+        key = (tuple(identity(state)), state.get('artwork', '')) if state.get('source') == 'apple' else None
+        if key != self.key:
+            if self.future is not None:
+                self.future.cancel()
+            self.key, self.future, self.result, self.retry = key, None, {}, 0
+        if self.future is not None and self.future.done():
+            try:
+                self.result = self.future.result()
+            except Exception:
+                self.retry = now + 5
+            self.future = None
+        if key and key[1] and not self.result and self.future is None and now >= self.retry:
+            self.future = executor.submit(self.load, key[1])
+        return self.result
+
+    @staticmethod
+    def load(url):
+        return {'cover': thumbnail(url), 'cover_file': page_cover(url)}
+
+
 def panel_view(key, status):
     options = read_json(UI)
     if isinstance(options, dict) and options.get('view_key') == key and options.get('view') in ('lyrics', 'spectrum'):
@@ -819,9 +849,24 @@ def panel_view(key, status):
     return 'spectrum' if status in ('syncing', 'unavailable') else 'lyrics'
 
 
+def saved_timing_options(key):
+    """Load bounded, exact song/station corrections independently of runtime UI."""
+    config = read_json(TIMING_CONFIG)
+    entries = config.get('songs', []) if isinstance(config, dict) else []
+    if isinstance(entries, list):
+        for entry in entries:
+            if isinstance(entry, dict) and entry.get('timing_key') == key:
+                return entry
+    return {}
+
+
 def adjusted_lyric_position(position, key, options):
     """Positive, song-specific correction displays lyrics earlier than their LRC."""
-    if position is None or options.get('timing_key') != key:
+    if position is None:
+        return position
+    if options.get('timing_key') != key:
+        options = saved_timing_options(key)
+    if options.get('timing_key') != key:
         return position
     try:
         advance = float(options.get('timing_advance', 0))
@@ -950,6 +995,7 @@ def main(debug=False):
     spectrum = runpy.run_path(str(Path(__file__).with_name('spectrum.py')))['Spectrum'](radio_input)
     apple_clock = AppleLyricClock()
     translation = LyricTranslation()
+    apple_artwork = AppleArtwork()
     while True:
         now = time.monotonic()
         state = read_json(RADIO)
@@ -957,6 +1003,7 @@ def main(debug=False):
         stamp = state.get('updated_at', 0)
         if not isinstance(stamp, (int, float)) or not 0 <= time.monotonic()-stamp < 3: state = {}
         apple = state.get('source') == 'apple'
+        artwork = apple_artwork.update(state, executor, now)
         clock_position = apple_clock.update(state, now)
         native = read_json(APPLE_LYRICS['OUT'], 524288) if apple else {}
         if APPLE_LYRICS['matches'](native, state, now) and native.get('paused') == bool(state.get('paused')):
@@ -1012,6 +1059,9 @@ def main(debug=False):
                 data.update(lyric_frame(current['lines'], position), status='synced', position=position)
             else:
                 data.update(status='unavailable', line=lyrics_status(current))
+        if apple and artwork:
+            data['cover'] = artwork['cover']
+            data['details'] = dict(data.get('details') or {}, cover_file=artwork['cover_file'])
         if not active: data.update(status='idle', line='')
         translation.update(current, data, options)
         data['view'] = panel_view(key, data['status'])

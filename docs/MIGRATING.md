@@ -1,3 +1,9 @@
+# Upgrading to Music Touchbar v1.3.0
+
+Uninstall hardware support with the previous checkout, update the checkout, and reinstall with your existing options. Include `--with-apple-music --with-karaoke` for Apple Music’s native timed lyrics and optional Japanese-to-Chinese translation. Keep your prepared Python 3.12 lyrics environment. Reconcile files changed since installation before uninstalling.
+
+Restart the dedicated Apple Music app after installation to load the lyric bridge and native-messaging permission; you may need to select your song again. Translation is enabled by tapping the 🌐 control on timed Japanese lyrics. See [Apple Music setup](APPLE-MUSIC.md) and [translation](TRANSLATION.md). Plugin updates alone do not replace hardware services. The plugin ID remains `tonybo.touchbar-radio`.
+
 # Upgrading to Music Touchbar v1.2.2
 
 The privacy cleanup changes the installed feed, logging defaults and status-file permissions. Use the previous checkout to uninstall hardware support, update, then reinstall with the same options. Updating the plugin checkout alone does not change existing services or permissions. Detailed matching diagnostics now require `karaoke.py --debug`; those logs may contain listening metadata. Existing journals and historical Git releases are not erased. Read the [privacy audit](PRIVACY.md).

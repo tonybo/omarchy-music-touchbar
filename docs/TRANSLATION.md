@@ -19,3 +19,7 @@ not sent for translation. Entirely non-Japanese lines remain in the original row
 without a duplicate underneath. Ambiguous lines containing only Han characters
 are left untouched because their language cannot be reliably inferred from script.
 
+
+## Persistent timing corrections
+
+Optional corrections live in `~/.config/radio-touchbar/lyrics-timing.json` (or beneath `XDG_CONFIG_HOME`). Create a `songs` array with entries containing the exact current `timing_key` and a `timing_advance` in seconds. Copy the key from the private karaoke runtime state's `key` field; do not publish your listening metadata. Positive values display lyrics earlier; values must be finite and between -10 and 10. Corrections match only that song/source key and survive worker restarts. A matching runtime UI correction takes precedence. Missing or malformed configuration is ignored.

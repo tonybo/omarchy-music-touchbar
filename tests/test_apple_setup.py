@@ -62,7 +62,7 @@ class AppleSetupTests(unittest.TestCase):
      i.apply(subset,account)
      manifest=json.loads(i.MANIFEST.read_text())
      self.assertIn('touchbar-radio-media.service',manifest['user_units'])
-     self.assertEqual(manifest['version'],'1.1.0')
+     self.assertEqual(manifest['version'], json.loads((ROOT / 'manifest.json').read_text())['version'])
      self.assertIn('setPositionState',bridge.read_text())
      self.assertEqual(host.stat().st_mode & 0o777,0o755)
      self.assertEqual(control.stat().st_mode & 0o777,0o755)

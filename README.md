@@ -24,6 +24,8 @@ Your music, right where your hands are. Control playback, swipe to adjust volume
 
 [![Live stereo spectrum on the Touch Bar](assets/screenshots/spectrum-live-01.png)](assets/screenshots/spectrum-live-01.png)
 
+**New in [v1.3.0](CHANGELOG.md):** Apple Music’s own timed lyrics, optional Japanese-to-Chinese translation, persistent timing corrections, and delayed artwork recovery.
+
 ## Get started
 
 You’ll need a **T2 MacBook with a working tiny-dfr Touch Bar**, **Omarchy with Hyprland Lua and omarchy-shell**, and **Radio Atlas or the Apple Music Omarchy plugin**. See the [requirements](docs/GUIDE.md#requirements).
@@ -36,6 +38,8 @@ omarchy-shell shell summon tonybo.touchbar-radio '{}'
 In the setup panel, choose **Preview setup**, then **Install hardware support**. Enable Apple Music support if you use it.
 
 For optional lyrics and song details, follow the [setup guide](docs/GUIDE.md#enable-karaoke-and-song-details). Already installed? See [upgrade instructions](docs/MIGRATING.md).
+
+To remove hardware support, run `./install.sh --uninstall` from your installed checkout before removing the plugin. See [migration and removal details](docs/MIGRATING.md).
 
 ## Explore
 

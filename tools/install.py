@@ -297,7 +297,7 @@ def apply(files,account):
             st=p.stat()
             previous={'data':base64.b64encode(p.read_bytes()).decode(),'mode':st.st_mode&0o777,'uid':st.st_uid,'gid':st.st_gid}
         records[name]={'previous':previous,'sha256':hashlib.sha256(item['data']).hexdigest(),'dynamic':item['dynamic'],'installed':False}
-    MANIFEST.write_text(json.dumps({'version':'1.1.0','user':account.pw_name,'files':records,'user_units':user_units},indent=2)+'\n')
+    MANIFEST.write_text(json.dumps({'version':'1.3.0','user':account.pw_name,'files':records,'user_units':user_units},indent=2)+'\n')
     MANIFEST.chmod(0o600)
     for name,item in files.items():
         p=Path(name)
@@ -310,7 +310,7 @@ def apply(files,account):
         p.write_bytes(item['data']);p.chmod(item.get('mode', 0o600 if p == DATA/'status.json' else 0o644))
         os.chown(p,account.pw_uid if item['user'] else 0,account.pw_gid if item['user'] else 0)
         records[name]['installed']=True
-        MANIFEST.write_text(json.dumps({'version':'1.1.0','user':account.pw_name,'files':records,'user_units':user_units},indent=2)+'\n')
+        MANIFEST.write_text(json.dumps({'version':'1.3.0','user':account.pw_name,'files':records,'user_units':user_units},indent=2)+'\n')
     subprocess.run(['udevadm','control','--reload-rules'],check=True)
     for e in Path('/sys/class/input').glob('event*'):
         if (e/'device/name').read_text().strip() in ('Apple Inc. Touch Bar Display Touchpad','Dynamic Function Row Virtual Input Device'):
