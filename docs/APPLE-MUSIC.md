@@ -33,7 +33,27 @@ Apple Music’s Chromium MPRIS volume property does not actually change playback
 
 Apple Music supplies the full artist, track title, album, artwork, duration, and playback clock. Apple Music does not use audio recognition or send audio to Shazam. While synced lyrics are searching or unavailable, the spectrum captures its uniquely identified playback stream for local, in-memory analysis; no samples are saved or uploaded. LRCLIB and NetEase receive the track metadata when lyric lookup is enabled; optional Wikipedia background lookup receives the song/artist/album names.
 
-The current web app does not export Apple’s own lyrics through MPRIS. Music Touchbar uses its existing provider fallback, synchronized to Apple’s clock. If a player exports native timed lyrics in the future, they take precedence.
+### Apple Music's own timed lyrics
+
+With Apple Music and karaoke enabled, the browser extension reads available
+lyrics through the signed-in player's API and sends them to a local native
+messaging helper. Apple Music's timed lyrics take priority immediately, including
+when a fallback provider found only plain text. The same original timestamps
+drive Japanese and Chinese. Songs without Apple timed lyrics retain LRCLIB/NetEase
+fallbacks.
+
+The bridge is restricted to the Apple Music extension and `music.apple.com`.
+Apple credentials remain inside the browser; only the current song's metadata,
+playback clock, and lyric document cross the bridge. The helper stores a private,
+short-lived runtime file. Native lyric endpoints can change independently of the
+public MusicKit API; failures leave the existing fallback available.
+
+New installs with both Apple Music and karaoke support include the bridge.
+Restart the dedicated Apple Music app once after installation so Chromium loads
+the added native-messaging permission. Apple Music may require selecting a song
+again after that restart.
+
+### Provider fallback
 
 Apple lookups require the full title, including version and featured-credit suffixes. Equivalent Traditional/Simplified Chinese script is accepted; shortened titles and similar song names are not. Artist and recording duration are checked, and matching releases are preferred. When duration is unavailable, a matching release is required. Provider records can still contain incorrect user-supplied lyric text or timestamps; exact metadata matching cannot validate their contents.
 

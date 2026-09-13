@@ -243,7 +243,7 @@ the checkout; the worker never reads browser cookies automatically.
 
 ### Spectrum while lyrics are unavailable
 
-The lyrics setup also enables a live stereo spectrum during searching or unavailable states. Read the [spectrum guide](SPECTRUM.md) and [status emoji legend](../README.md#a-spectrum-while-lyrics-wait).
+The lyrics setup also enables a live stereo spectrum during searching or unavailable states. Read the [spectrum guide](SPECTRUM.md) and [status emoji legend](SPECTRUM.md#status-icons).
 
 ### Network use and timing
 
