@@ -98,7 +98,7 @@ def save_panel_options(options):
     temp.replace(path)
 
 
-def cycle_panel(state):
+def cycle_panel(state, translation_tap=False):
     options = panel_options()
     if options.get('expanded') or not state.get('running') or state.get('error'):
         return False
@@ -114,6 +114,14 @@ def cycle_panel(state):
     view = options.get('view') if options.get('view_key') == key else None
     if view not in ('lyrics', 'spectrum'):
         view = data.get('view', 'spectrum' if data.get('status') in ('syncing', 'unavailable') else 'lyrics')
+    if translation_tap and data.get('translation_available') and view == 'lyrics':
+        enabled = (options.get('translation_key') == key
+                   and options.get('translation_enabled') is True)
+        options.update(translation_key=key,
+                       translation_enabled=not enabled or data.get('translation_status') == 'error',
+                       translation_request=time.monotonic_ns())
+        save_panel_options(options)
+        return True
     options.update(view='lyrics' if view == 'spectrum' else 'spectrum', view_key=key)
     save_panel_options(options)
     return True
@@ -419,6 +427,7 @@ def main():
                             gesture=Gesture(pos['x'],pos['y'],now)
                             gesture.armed=left<=pos['x']<=right and .1*height<=pos['y']<=.9*height and now-blocked_at>.08
                             gesture.media_state=MEDIA['current_state']()
+                            gesture.translation_tap=right-64<=pos['x']<=right
                             gesture.base_volume=max(0,min(100,float(gesture.media_state.get('volume',70))))
                             output.state=gesture.media_state
                             output.sent=None
@@ -427,7 +436,7 @@ def main():
                     elif gesture is not None:
                         action=gesture.action(now)
                         if action and action[0]=='tap':
-                            if cycle_panel(gesture.media_state):
+                            if cycle_panel(gesture.media_state, gesture.translation_tap):
                                 logging.warning('Lyrics panel view toggled')
                             else:
                                 command=MEDIA['control_command'](gesture.media_state,'open') if gesture.media_state else []

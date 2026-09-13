@@ -31,13 +31,18 @@ class AppleSetupTests(unittest.TestCase):
    hypr=home/'.config/hypr/hyprland.lua';hypr.parent.mkdir(parents=True);hypr.write_text('-- user config\n')
    bridge=home/'.config/omarchy/plugins/melonamin.apple-music/extension/player-bridge.js';bridge.parent.mkdir(parents=True)
    original='    const state = JSON.stringify(model.serializePlayer(instance))\n';bridge.write_text(original)
+   extension_manifest=bridge.with_name('chromium-manifest.json')
+   extension_manifest.write_text(json.dumps({'permissions':['storage'],'content_scripts':[{'world':'MAIN','js':['player-model.js','player-bridge.js']},{'js':['content.js']}]}))
+   control=bridge.parent.parent/'control.sh'
+   original_control='EXTENSION_FILES=(manifest.json player-model.js player-bridge.js content.js)\n'
+   control.write_text(original_control);control.chmod(0o755)
    original_read=Path.read_text;original_exists=Path.exists
    def read(p,*args,**kwargs):
     if str(p)=='/usr/share/tiny-dfr/config.toml':return 'MediaLayerKeys=[{Action="PlayPause"}]\nPrimaryLayerKeys=[{Action="F1"}]'
     return original_read(p,*args,**kwargs)
    def exists(p):return False if str(p).startswith('/etc/') else original_exists(p)
    with patch.object(i,'LIB',root/'lib'),patch.object(i,'ETC',root/'etc'),patch.object(i,'DATA',root/'data'),patch.object(i,'MANIFEST',root/'data/install.json'),patch.object(Path,'read_text',read),patch.object(Path,'exists',exists):
-    files=i.plan(account,2170,60,False,apple_music=True)
+    files=i.plan(account,2170,60,False,karaoke_python='/usr/bin/python3',apple_music=True)
     media=home/'.config/systemd/user/touchbar-radio-media.service'
     self.assertIn('TOUCHBAR_APPLE_MUSIC=1',files[str(media)]['data'].decode())
     self.assertIn(str(root/'lib/media.py'),files)
@@ -46,15 +51,42 @@ class AppleSetupTests(unittest.TestCase):
     self.assertIn('hl.unbind("XF86Launch7")',binds)
     # Exercise the existing manifest-based restoration with the changed plugin
     # file, without writing any of the real root/system paths in this fixture.
-    subset={str(bridge):files[str(bridge)],str(media):files[str(media)]}
+    native=home/'.local/share/omarchy-apple-music/chromium/NativeMessagingHosts/com.omarchy.touchbar_apple_lyrics.json'
+    host=root/'lib/apple_lyrics.py'
+    self.assertEqual(json.loads(files[str(native)]['data'])['path'],str(host))
+    self.assertEqual(files[str(host)]['mode'],0o755)
+    self.assertIn('nativeMessaging',json.loads(files[str(extension_manifest)]['data'])['permissions'])
+    self.assertIn(str(bridge.with_name('lyrics-background.js')),files)
+    subset={str(p):files[str(p)] for p in (bridge,media,control,native,host)}
     with patch.object(i.subprocess,'run'),patch.object(i,'user_systemctl'),patch.object(i.os,'chown'),patch.object(i.pwd,'getpwnam',return_value=account):
      i.apply(subset,account)
      manifest=json.loads(i.MANIFEST.read_text())
      self.assertIn('touchbar-radio-media.service',manifest['user_units'])
      self.assertEqual(manifest['version'],'1.1.0')
      self.assertIn('setPositionState',bridge.read_text())
+     self.assertEqual(host.stat().st_mode & 0o777,0o755)
+     self.assertEqual(control.stat().st_mode & 0o777,0o755)
      i.uninstall()
     self.assertEqual(bridge.read_text(),original)
     self.assertFalse(media.exists())
+    self.assertEqual(control.read_text(),original_control)
+    self.assertFalse(native.exists())
+    self.assertFalse(host.exists())
 
 if __name__=='__main__':unittest.main()
+
+class AppleLyricsSetupTests(unittest.TestCase):
+ def test_lyrics_bridge_patch_is_idempotent_and_keeps_existing_permissions(self):
+  manifest={'permissions':['storage'],'content_scripts':[{'world':'MAIN','js':['player-model.js','player-bridge.js']},{'js':['content.js']}]}
+  control='EXTENSION_FILES=(manifest.json player-model.js player-bridge.js content.js)\n'
+  patched, deployment=i.apple_lyrics_extension(manifest,control)
+  self.assertEqual(patched['permissions'],['storage','nativeMessaging'])
+  self.assertEqual(patched['background'],{'service_worker':'lyrics-background.js'})
+  self.assertIn('lyrics-main.js',patched['content_scripts'][0]['js'])
+  self.assertIn('lyrics-content.js',patched['content_scripts'][1]['js'])
+  self.assertIn('lyrics-background.js',deployment)
+  self.assertEqual(i.apple_lyrics_extension(patched,deployment),(patched,deployment))
+  self.assertNotIn('background',manifest)
+ def test_refuses_to_replace_an_unrelated_extension_worker(self):
+  with self.assertRaisesRegex(ValueError,'background worker'):
+   i.apple_lyrics_extension({'background':{'service_worker':'other.js'}},'')

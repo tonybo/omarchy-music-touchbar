@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add a compact translation button for timed Japanese lyrics, with synchronized Simplified Chinese beneath the original. Preserve English and other foreign-script phrases verbatim, including inside Japanese lines.
+- Prefer Apple Music's own timed lyrics through the signed-in player and a restricted local native-messaging bridge, retaining provider fallbacks.
+- Parse Apple lyric timestamps as absolute song times, including bare decimal seconds and mixed clock formats. Refresh parser errors instead of leaving stale loading state.
+- Keep translation opt-in, cache results only in memory, and discard stale work on song changes. Add loading, retry, and per-song timing support.
+- Include bridge setup and restoration in the installer, and cover translation, TTML parsing, native messaging, and browser behavior in tests.
+
 ## v1.2.2 — Privacy and code cleanup (2026-09-13)
 
 - Audit all published history and release attachments; no apparent live credentials or private runtime exports found. Document scope, findings and remaining visibility in `docs/PRIVACY.md`.

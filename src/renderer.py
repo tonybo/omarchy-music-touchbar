@@ -290,22 +290,50 @@ def render_lyrics(state, panel_width=900):
         return render_spectrum(k, panel_width)
     line=clean(k.get('line') or 'Finding song timing…',600)
     next_line=clean(k.get('next'),600)
+    translation = k.get('translation_status', 'off')
+    available = k.get('translation_available') is True
+    bilingual = available and translation == 'ready'
+    content_width = panel_width - (64 if available else 0)
     progress=k.get('progress',0)
     if not isinstance(progress,(int,float)) or not math.isfinite(progress): progress=0
     progress=max(0,min(1,progress))
-    size=min(28, (panel_width-45)/max(1,text_width(line,28,True))*28)
+    main_size = 23 if bilingual else 28
+    size=min(main_size, (content_width-45)/max(1,text_width(line,main_size,True))*main_size)
     size=max(11,size)
-    width=min(panel_width-30,text_width(line,size,True))
-    x=max(15,(panel_width-width)/2)
+    width=min(content_width-30,text_width(line,size,True))
+    x=max(15,(content_width-width)/2)
     fill=width*progress if status=='synced' else 0
     label=next_line or ('LINE SYNC · LRCLIB' if status=='synced' else 'RADIO LYRICS')
+    if bilingual:
+        label = clean(k.get('translation_line'), 600)
+    elif available and translation == 'loading':
+        label = '正在翻译…'
+    elif available and translation == 'error':
+        label = '翻译暂不可用 · 轻点重试'
+    label_size = min(15 if bilingual else 12,
+                     max(9, (content_width-30)/max(1,text_width(label,15,False))*15))
+    baseline = 24 if bilingual else 27
+    icon = ''
+    if available:
+        # A vector rendition of 🌐 stays crisp on tiny-dfr's SVG renderer.
+        color = '#84ebc6' if translation == 'ready' else '#d7ad82' if translation == 'error' else '#c1d5e5'
+        icon = f'''<g>
+<rect x="{panel_width-60}" y="8" width="54" height="32" rx="9" fill="#213444" stroke="#435c70" stroke-width="0.7"/>
+<g transform="translate({panel_width-44},24)" fill="none" stroke="{color}" stroke-width="1.4">
+<title>Japanese → Chinese · tap to translate or toggle</title>
+<circle r="8"/><ellipse rx="3.5" ry="8"/><path d="M-8 0h16M-6-4h12M-6 4h12"/></g>
+<text x="{panel_width-30}" y="30" font-family="sans-serif" font-size="16" fill="{color}">译</text></g>'''
     # LRC supplies line timing: the fill is a visual sweep, not inferred word timestamps.
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{panel_width}" height="48">
-<defs><clipPath id="sweep"><rect x="{x:.1f}" y="0" width="{fill:.1f}" height="31"/></clipPath></defs>
+<defs><clipPath id="sweep"><rect x="{x:.1f}" y="0" width="{fill:.1f}" height="31"/></clipPath>
+<clipPath id="lyrics-content"><rect x="12" width="{content_width-24}" height="48"/></clipPath></defs>
 <rect width="{panel_width}" height="48" rx="8" fill="#101b27"/>
-<text x="{x:.1f}" y="27" font-family="sans-serif" font-size="{size:.1f}" font-weight="bold" fill="#edf3fa">{html.escape(line)}</text>
-<text x="{x:.1f}" y="27" font-family="sans-serif" font-size="{size:.1f}" font-weight="bold" fill="#84ebc6" clip-path="url(#sweep)">{html.escape(line)}</text>
-<text x="{panel_width/2:.1f}" y="44" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#91a9ba">{html.escape(label)}</text>
+<g clip-path="url(#lyrics-content)">
+<text x="{x:.1f}" y="{baseline}" font-family="sans-serif" font-size="{size:.1f}" font-weight="bold" fill="#edf3fa">{html.escape(line)}</text>
+<text x="{x:.1f}" y="{baseline}" font-family="sans-serif" font-size="{size:.1f}" font-weight="bold" fill="#84ebc6" clip-path="url(#sweep)">{html.escape(line)}</text>
+<text x="{content_width/2:.1f}" y="44" text-anchor="middle" font-family="sans-serif" font-size="{label_size:.1f}" fill="#b2c8d7">{html.escape(label)}</text>
+</g>
+{icon}
 </svg>'''
 
 

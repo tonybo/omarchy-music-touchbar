@@ -107,3 +107,44 @@ Prefer the terminal? Use the [standalone installer](docs/GUIDE.md#standalone-ins
 Made for [Omarchy](https://omarchy.org). Powered by [tiny-dfr](https://github.com/AsahiLinux/tiny-dfr) and [Radio Atlas](https://github.com/AksharP5/omarchy-radio-atlas), with optional [Voxtype](https://voxtype.io).
 
 [MIT licensed](LICENSE). An independent community project.
+
+### Japanese → Chinese lyrics
+
+When timed Japanese lyrics are available, a subtle 🌐 control appears at the right
+edge of the lyrics panel. Tap it to translate into Simplified Chinese: Japanese
+stays on the upper line, with Chinese below it following the same timestamps,
+including playback seeks. Tap again to return to the original/next-line view.
+The rest of the panel still switches between lyrics and spectrum; swipes adjust
+volume as before. Untimed lyrics retain the song-info view.
+
+Translation begins only after a tap. It sends lyric text to Google Translate's
+public web endpoint, with no audio or account credentials. This is a best-effort
+endpoint, not the supported Google Cloud API; availability and translation quality
+can vary. Results stay in a bounded memory cache until the lyrics worker exits.
+Loading keeps the Japanese lyrics visible; a failed request offers tap-to-retry.
+
+Only Japanese passages are translated. Foreign-script phrases (including English
+inside a Japanese line) retain their original spelling and punctuation and are
+not sent for translation. Entirely non-Japanese lines remain in the original row
+without a duplicate underneath. Ambiguous lines containing only Han characters
+are left untouched because their language cannot be reliably inferred from script.
+
+### Apple Music's own timed lyrics
+
+With Apple Music and karaoke enabled, the browser extension reads available
+lyrics through the signed-in player's API and sends them to a local native
+messaging helper. Apple Music's timed lyrics take priority immediately, including
+when a fallback provider found only plain text. The same original timestamps
+drive Japanese and Chinese. Songs without Apple timed lyrics retain LRCLIB/NetEase
+fallbacks.
+
+The bridge is restricted to the Apple Music extension and `music.apple.com`.
+Apple credentials remain inside the browser; only the current song's metadata,
+playback clock, and lyric document cross the bridge. The helper stores a private,
+short-lived runtime file. Native lyric endpoints can change independently of the
+public MusicKit API; failures leave the existing fallback available.
+
+New installs with both Apple Music and karaoke support include the bridge.
+Restart the dedicated Apple Music app once after installation so Chromium loads
+the added native-messaging permission. Apple Music may require selecting a song
+again after that restart.

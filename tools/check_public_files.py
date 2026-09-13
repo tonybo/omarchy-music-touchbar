@@ -13,6 +13,7 @@ PRIVATE_NAMES = {
     'cookies', 'cookies.txt', 'cookies.json', 'cookies-journal', 'cookies-wal',
     'cookies-shm', 'netease-session.json', 'touchbar-media.json',
     'touchbar-karaoke.json', 'touchbar-karaoke-ui.json', 'radio-touchbar-volume.json',
+    'touchbar-apple-lyrics.json',
     'touchbar-song-info.html', 'id_rsa', 'id_ed25519',
 }
 PRIVATE_SUFFIXES = {'.key', '.pem', '.p12', '.pfx', '.log', '.core', '.dump',

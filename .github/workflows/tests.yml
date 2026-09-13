@@ -15,8 +15,8 @@ jobs:
         run: /usr/bin/python3 -m compileall -q src tools
       - name: Run tests
         run: /usr/bin/python3 -m unittest discover -s tests -v
-      - name: Test Apple Music clock bridge
-        run: node --test tests/test_apple_clock.cjs
+      - name: Test Apple Music browser bridges
+        run: node --test tests/test_apple_*.cjs
       - name: Check shell syntax
         run: |
           bash -n install.sh

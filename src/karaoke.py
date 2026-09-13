@@ -22,6 +22,7 @@ import re
 import runpy
 import select
 import stat
+import threading
 import subprocess
 import time
 import unicodedata
@@ -38,6 +39,7 @@ ALIAS_CONFIG = MATCH_CONFIG.with_name('lyrics-aliases.json')
 MATCH_THRESHOLDS = {'strict': 1.0, 'balanced': 0.90, 'relaxed': 0.85}
 SONG_DETAILS = runpy.run_path(str(Path(__file__).with_name('song_details.py')))['details']
 CATALOG = runpy.run_path(str(Path(__file__).with_name('song_catalog.py')))
+APPLE_LYRICS = runpy.run_path(str(Path(__file__).with_name('apple_lyrics.py')))
 UA = 'MusicTouchbar/1.2 (https://github.com/tonybo/omarchy-music-touchbar)'
 
 
@@ -755,6 +757,12 @@ def lookup_apple(state):
     native = state.get('native_lyrics', '')
     lines = parse_lrc(native)
     plain, source, instrumental, failed = native, 'Apple Music' if native else '', False, False
+    bridged = read_json(APPLE_LYRICS['OUT'], 524288)
+    if APPLE_LYRICS['matches'](bridged, state, time.monotonic()):
+        lines = bridged.get('lines') or lines
+        if lines or bridged.get('lyrics'):
+            plain = '\n'.join(bridged.get('lyrics') or [])
+            source = 'Apple Music'
     if not lines:
         try:
             match = find_lyrics(artist, title, artist_aliases=configured_artist_aliases(artist),
@@ -788,11 +796,144 @@ def lyrics_status(current):
     return 'No matching synced lyrics found'
 
 
+def prefer_apple_lyrics(current, native, state, now):
+    if not APPLE_LYRICS['matches'](native, state, now) or not native.get('lines'):
+        return current
+    if current and current.get('apple_lyrics_revision') == native.get('revision'):
+        return current
+    result = dict(current or {}, artist=state.get('artist', ''), title=state.get('track_title', ''),
+                  key=identity(state), lines=native['lines'],
+                  lyrics=('\n'.join(native.get('lyrics') or [])[:24000]).splitlines(),
+                  lyrics_source='Apple Music', lyrics_error=False, instrumental=False,
+                  duration=state.get('duration', 0), recognized_at=now,
+                  apple_lyrics_revision=native.get('revision'))
+    result.setdefault('cover', '')
+    result.setdefault('details', {})
+    return result
+
+
 def panel_view(key, status):
     options = read_json(UI)
     if isinstance(options, dict) and options.get('view_key') == key and options.get('view') in ('lyrics', 'spectrum'):
         return options['view']
     return 'spectrum' if status in ('syncing', 'unavailable') else 'lyrics'
+
+
+def adjusted_lyric_position(position, key, options):
+    """Positive, song-specific correction displays lyrics earlier than their LRC."""
+    if position is None or options.get('timing_key') != key:
+        return position
+    try:
+        advance = float(options.get('timing_advance', 0))
+        if math.isfinite(advance) and abs(advance) <= 10:
+            return max(0, position + advance)
+    except (TypeError, ValueError):
+        pass
+    return position
+
+
+def japanese_lyrics(lines):
+    return bool(re.search(r'[\u3041-\u3096\u30a1-\u30fa\uff66-\uff9d]', '\n'.join(lines)))
+
+
+def japanese_translation_parts(line):
+    """Keep foreign-script words verbatim, including words inside Japanese lines.
+
+    Kana provides Japanese evidence; leave ambiguous Han-only lines untouched.
+    Whitespace between Japanese phrases stays with the phrase for context.
+    """
+    if not japanese_lyrics([line]):
+        return [(line, False)]
+    japanese = r'[\u3005-\u3007\u303b\u3041-\u309f\u30a1-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff66-\uff9f]'
+    pattern = japanese + r'+(?:[ \t、。！？!?…「」『』（）]+' + japanese + r'+)*'
+    parts = []
+    end = 0
+    for match in re.finditer(pattern, line):
+        parts.extend(((line[end:match.start()], False), (match[0], True)))
+        end = match.end()
+    parts.append((line[end:], False))
+    return parts
+
+
+def translate_lyrics(lines, cancelled):
+    """Translate bounded batches; reject changed line counts instead of guessing timing.
+
+    Uses Google's public web translation endpoint (best effort, no API SLA).
+    No audio, account credentials or song metadata are sent. Cache is memory only.
+    """
+    if len(lines) > 1000 or sum(map(len, lines)) > 60000:
+        raise ValueError('Lyrics too large')
+    plans = [japanese_translation_parts(line) for line in lines]
+    unique = list(dict.fromkeys(text for parts in plans for text, translate in parts if translate))
+    result = {}
+    while unique:
+        if cancelled.is_set():
+            raise ValueError('Translation cancelled')
+        batch = [unique.pop(0)]
+        while unique and sum(map(len, batch)) + len(unique[0]) + len(batch) < 1600:
+            batch.append(unique.pop(0))
+        query = urllib.parse.urlencode({'client': 'gtx', 'sl': 'ja', 'tl': 'zh-CN',
+                                       'dt': 't', 'q': '\n'.join(batch)})
+        request = urllib.request.Request('https://translate.googleapis.com/translate_a/single?' + query,
+                                         headers={'User-Agent': UA})
+        with urllib.request.urlopen(request, timeout=12) as response:
+            raw = response.read(65537)
+        if len(raw) > 65536:
+            raise ValueError('Translation response too large')
+        payload = json.loads(raw)
+        translated = ''.join(part[0] for part in payload[0] if part[0]).strip().splitlines()
+        if len(translated) != len(batch) or any(not text.strip() for text in translated):
+            raise ValueError('Translation line alignment changed')
+        result.update(zip(batch, (text.strip()[:600] for text in translated)))
+    return [''.join(result[text] if translate else text for text, translate in parts)
+            for parts in plans]
+
+
+class LyricTranslation:
+    def __init__(self):
+        self.executor = ThreadPoolExecutor(max_workers=1)
+        self.token = None
+        self.future = None
+        self.cancelled = threading.Event()
+        self.cache = {}
+        self.result = None
+        self.status = 'off'
+
+    def update(self, current, data, options):
+        lines = tuple(text for _, text in current.get('lines', [])) if current else ()
+        available = bool(lines) and japanese_lyrics(lines)
+        enabled = (available and options.get('translation_key') == data.get('key')
+                   and options.get('translation_enabled') is True)
+        token = (tuple(data.get('key') or []), lines, options.get('translation_request')) if enabled else None
+        if token != self.token:
+            self.cancelled.set()
+            if self.future:
+                self.future.cancel()
+            self.token, self.future, self.result = token, None, None
+            self.cancelled = threading.Event()
+            self.status = 'off'
+            if enabled:
+                self.result = self.cache.get(lines)
+                self.status = 'ready' if self.result is not None else 'loading'
+                if self.result is None:
+                    self.future = self.executor.submit(translate_lyrics, lines, self.cancelled)
+        if self.future and self.future.done():
+            try:
+                self.result = self.future.result()
+                if len(self.cache) >= 8:
+                    self.cache.pop(next(iter(self.cache)))
+                self.cache[lines] = self.result
+                self.status = 'ready'
+            except Exception:
+                self.status = 'error'
+                logging.warning('Lyrics translation unavailable; tap to retry')
+            self.future = None
+        data.update(translation_available=available, translation_status=self.status,
+                    translation_line='')
+        if enabled and self.result is not None and data.get('status') == 'synced':
+            index = bisect.bisect_right([at for at, _ in current['lines']], data['position']) - 1
+            if index >= 0:
+                data['translation_line'] = self.result[index] if self.result[index] != lines[index] else ''
 
 
 def publish(data):
@@ -808,6 +949,7 @@ def main(debug=False):
     epoch = 0; pending_epoch = None; last_error = None
     spectrum = runpy.run_path(str(Path(__file__).with_name('spectrum.py')))['Spectrum'](radio_input)
     apple_clock = AppleLyricClock()
+    translation = LyricTranslation()
     while True:
         now = time.monotonic()
         state = read_json(RADIO)
@@ -816,6 +958,10 @@ def main(debug=False):
         if not isinstance(stamp, (int, float)) or not 0 <= time.monotonic()-stamp < 3: state = {}
         apple = state.get('source') == 'apple'
         clock_position = apple_clock.update(state, now)
+        native = read_json(APPLE_LYRICS['OUT'], 524288) if apple else {}
+        if APPLE_LYRICS['matches'](native, state, now) and native.get('paused') == bool(state.get('paused')):
+            clock_position = apple_position(dict(position=native.get('position'),
+                position_at=native.get('updated_at'), paused=native.get('paused')), now)
         active = state.get('running') is True and not state.get('error')
         paused = state.get('paused') is True
         new_key = identity(state)
@@ -843,12 +989,17 @@ def main(debug=False):
             pending_epoch = epoch
             future = executor.submit(lookup_apple, dict(state)) if apple else executor.submit(lookup, dict(state), 12 if last_error else 8)
         artist, title = (state.get('artist', ''), state.get('track_title', '')) if apple else split_title(state.get('title', ''))
+        if apple:
+            current = prefer_apple_lyrics(current, native, state, now)
+        options = read_json(UI)
+        if not isinstance(options, dict): options = {}
         data = {'active': active, 'paused': paused, 'key': key, 'updated_at': now,
                 'artist': artist, 'title': title, 'cover': '', 'status': 'paused' if paused else 'syncing',
                 'line': 'Paused' if paused else (last_error or ('Finding matching lyrics…' if apple else 'Finding song timing…')), 'next': '', 'progress': 0}
         if current:
             data.update({k: current[k] for k in ('artist', 'title', 'cover', 'lyrics', 'details', 'lyrics_source')})
             position = clock_position if apple else now - current['anchor']
+            position = adjusted_lyric_position(position, key, options)
             if paused:
                 pass
             elif position is not None and position > current['duration'] + 5 and current['duration']:
@@ -862,6 +1013,7 @@ def main(debug=False):
             else:
                 data.update(status='unavailable', line=lyrics_status(current))
         if not active: data.update(status='idle', line='')
+        translation.update(current, data, options)
         data['view'] = panel_view(key, data['status'])
         data['spectrum'] = spectrum.update(state, active and not paused and data['view'] == 'spectrum')
         publish(data)

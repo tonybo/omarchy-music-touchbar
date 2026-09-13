@@ -10,7 +10,7 @@ Install PyGObject/Pango and Pillow for the test interpreter, then run the tests 
 python3 tools/check_public_files.py
 python3 -m unittest discover -s tests -v
 python3 -m compileall -q src tools
-node --test tests/test_apple_clock.cjs
+node --test tests/test_apple_*.cjs
 ```
 
 The most valuable checks are:

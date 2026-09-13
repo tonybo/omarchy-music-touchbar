@@ -174,6 +174,30 @@ def apple_bridge(source):
     return source.replace(original, replacement)
 
 
+def apple_lyrics_extension(manifest, control):
+    manifest = copy.deepcopy(manifest)
+    background = manifest.get('background')
+    if background and background != {'service_worker': 'lyrics-background.js'}:
+        raise ValueError('Apple Music extension has an unrecognized background worker.')
+    manifest['permissions'] = list(dict.fromkeys(manifest.get('permissions', []) + ['nativeMessaging']))
+    manifest['background'] = {'service_worker': 'lyrics-background.js'}
+    scripts = manifest.get('content_scripts', [])
+    main = next((s for s in scripts if s.get('world') == 'MAIN'), None)
+    isolated = next((s for s in scripts if s.get('world', 'ISOLATED') == 'ISOLATED'), None)
+    if main is None or isolated is None:
+        raise ValueError('Apple Music extension script layout has changed.')
+    for script, name in ((main, 'lyrics-main.js'), (isolated, 'lyrics-content.js')):
+        script['js'] = list(dict.fromkeys(script.get('js', []) + [name]))
+    names = ['lyrics-main.js', 'lyrics-content.js', 'lyrics-background.js']
+    def extend(match):
+        existing = match[1].split()
+        return 'EXTENSION_FILES=(' + ' '.join(dict.fromkeys(existing + names)) + ')'
+    control, count = re.subn(r'^EXTENSION_FILES=\(([^\n()]*)\)', extend, control, flags=re.M)
+    if count != 1:
+        raise ValueError('Apple Music extension deployment list has changed.')
+    return manifest, control
+
+
 def plan(account, width, height, dictation, karaoke_python=None, background=False, apple_music=False):
     home=Path(account.pw_dir)
     config=Path('/etc/tiny-dfr/config.toml')
@@ -207,6 +231,26 @@ def plan(account, width, height, dictation, karaoke_python=None, background=Fals
         if not bridge.is_file():
             raise ValueError('Install the melonamin.apple-music Omarchy plugin before enabling Apple Music support.')
         add(bridge, apple_bridge(bridge.read_text()), user=True, replace=True)
+        if karaoke_python:
+            plugin = bridge.parent.parent
+            manifest_path = plugin/'extension/chromium-manifest.json'
+            control_path = plugin/'control.sh'
+            extension, control = apple_lyrics_extension(json.loads(manifest_path.read_text()), control_path.read_text())
+            add(manifest_path, json.dumps(extension, indent=2)+'\n', user=True, replace=True)
+            add(control_path, control, user=True, replace=True)
+            files[str(control_path)]['mode'] = 0o755
+            for source in (REPO/'patches/apple-lyrics').glob('*.js'):
+                add(plugin/'extension'/source.name, source.read_bytes(), user=True, replace=True)
+            extension_path = f'/run/user/{account.pw_uid}/omarchy-apple-music/extension'
+            digest = hashlib.sha256(extension_path.encode()).hexdigest()[:32]
+            extension_id = ''.join(chr(ord('a') + int(char, 16)) for char in digest)
+            native = json.dumps({'name': 'com.omarchy.touchbar_apple_lyrics',
+                'description': 'Apple Music lyrics for Music Touchbar',
+                'path': str(LIB/'apple_lyrics.py'), 'type': 'stdio',
+                'allowed_origins': [f'chrome-extension://{extension_id}/']}, indent=2)+'\n'
+            for profile in (home/'.config/chromium', home/'.local/share/omarchy-apple-music/chromium'):
+                add(profile/'NativeMessagingHosts/com.omarchy.touchbar_apple_lyrics.json', native, user=True, replace=True)
+            files[str(LIB/'apple_lyrics.py')]['mode'] = 0o755
     if karaoke_python:
         add(home/'.config/systemd/user/touchbar-radio-karaoke.service',
             unit_text('karaoke', karaoke_python, background), user=True)
@@ -263,7 +307,7 @@ def apply(files,account):
         p.parent.mkdir(parents=True,exist_ok=True)
         if item['user']:
             for directory in missing: os.chown(directory,account.pw_uid,account.pw_gid)
-        p.write_bytes(item['data']);p.chmod(0o600 if p == DATA/'status.json' else 0o644)
+        p.write_bytes(item['data']);p.chmod(item.get('mode', 0o600 if p == DATA/'status.json' else 0o644))
         os.chown(p,account.pw_uid if item['user'] else 0,account.pw_gid if item['user'] else 0)
         records[name]['installed']=True
         MANIFEST.write_text(json.dumps({'version':'1.1.0','user':account.pw_name,'files':records,'user_units':user_units},indent=2)+'\n')

@@ -46,7 +46,8 @@ def karaoke_for_display(data):
         return {}
     result = {key: data[key] for key in (
         'active', 'paused', 'status', 'line', 'next', 'progress',
-        'artist', 'title', 'cover', 'view') if key in data}
+        'artist', 'title', 'cover', 'view', 'translation_available',
+        'translation_status', 'translation_line') if key in data}
     result['has_lyrics'] = bool(data.get('lyrics'))
     spectrum = data.get('spectrum')
     if isinstance(spectrum, dict):
